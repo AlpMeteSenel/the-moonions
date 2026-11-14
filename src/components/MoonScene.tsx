@@ -2,7 +2,7 @@
 
 import { AdaptiveDpr, useProgress } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useStore } from "@/lib/store";
 import Globe from "./Globe";
@@ -35,13 +35,17 @@ function RedrawOnResolutionChange() {
 }
 
 export default function MoonScene() {
-  const view = useStore((s) => s.view);
+  const current = useStore((s) => s.view);
+  // Mission control covers the map: keep the last 3D view mounted underneath and stop rendering it
+  const last = useRef<"globe" | "site">("globe");
+  if (current !== "crew") last.current = current;
+  const view = last.current;
   return (
     <>
     <Canvas
       key={view}
       shadows={view === "site"}
-      frameloop="demand"
+      frameloop={current === "crew" ? "never" : "demand"}
       dpr={[1, 1.5]}
       performance={{ min: 0.5, debounce: 250 }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}

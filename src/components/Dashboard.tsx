@@ -14,6 +14,7 @@ import CandidateRail from "./CandidateRail";
 import MapHud from "./map/MapHud";
 import TimeScrubber from "./map/TimeScrubber";
 import ComparePanel from "./ComparePanel";
+import MissionControl from "./crew/MissionControl";
 import ProposalsPanel from "./ProposalsPanel";
 import SitePanel from "./SitePanel";
 import TopBar from "./TopBar";
@@ -99,6 +100,7 @@ export default function Dashboard() {
   const init = useStore((s) => s.init);
   const panel = useStore((s) => s.panel);
   const setPanel = useStore((s) => s.setPanel);
+  const view = useStore((s) => s.view);
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,7 +112,8 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#02030a] text-white">
       <TopBar />
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+        <MissionControl visible={view === "crew"} />
         <CandidateRail />
         <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
