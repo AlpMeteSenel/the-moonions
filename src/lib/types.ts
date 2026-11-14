@@ -10,6 +10,8 @@ export interface Site {
   group: string;
   approx?: boolean;
   custom?: boolean;
+  /** Candidates are areas: half the side of the square region, metres (Artemis III: 7500). */
+  half_size_m?: number;
 }
 
 export interface Factor {
@@ -182,11 +184,13 @@ export interface AIBackup {
 
 export interface AIPlan {
   available: boolean;
-  matrix: { site_ids: string[]; times: string[]; success: number[][] };
-  primary: { site_id: string; name: string; lat: number; lon: number; landing_time: string; success_probability: number; heads: Heads };
-  backups: AIBackup[];
+  matrix: { site_ids: string[]; times: string[]; success: number[][]; best_success?: number[][]; viable_share?: number[][] };
+  primary: { site_id: string; name: string; lat: number; lon: number; landing_time: string; success_probability: number; heads?: Heads; half_size_m?: number; viable_share?: number; zone?: LandingZone | null };
+  backups?: AIBackup[];
+  zones?: LandingZone[];
+  region_stats?: RegionAnalysis["stats"];
   best_times: AIWindow[];
-  site_best: { site_id: string; name: string; landing_time: string; success_probability: number; viable_slots: number }[];
+  site_best: { site_id: string; name: string; landing_time: string; success_probability: number; viable_slots?: number; viable_share?: number; open_slots?: number }[];
   alternatives: { site_id: string; name: string; landing_time: string; success_probability: number }[];
   explanation: string[];
   no_viable: boolean;
@@ -255,6 +259,59 @@ export interface AITimeline {
   times: string[];
   success: number[];
   heads: Record<HeadKey, number[]>;
+  windows: AIWindow[];
+  step_hours: number;
+}
+
+export interface LandingZone {
+  id: string;
+  rank: number;
+  lat: number;
+  lon: number;
+  east_m: number;
+  north_m: number;
+  area_km2: number;
+  margin_m: number;
+  mean_success: number;
+  target_success: number;
+  fits_ellipse: boolean;
+  from_primary?: { distance_m: number; direction: string; decide_by_s: number };
+}
+
+export interface RegionAnalysis {
+  available: boolean;
+  lat: number;
+  lon: number;
+  half_size_m: number;
+  cells: number;
+  resolution_m: number;
+  landing_time: string;
+  ellipse_radius_m: number;
+  success: number[];
+  touchdown: number[];
+  uncertainty: number[];
+  gate: number[];
+  stats: {
+    area_km2: number;
+    safe_ground_km2: number;
+    safe_ground_share: number;
+    lit_share: number;
+    comms_share: number;
+    power_share: number;
+    viable_share: number;
+    viable_km2: number;
+    best_success: number;
+    zones: number;
+  };
+  zones: LandingZone[];
+}
+
+export interface RegionTimeline {
+  available: boolean;
+  times: string[];
+  viable_share: number[];
+  best_success: number[];
+  score: number[];
   windows: AIWindow[];
   step_hours: number;
 }

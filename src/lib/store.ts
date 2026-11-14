@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { api, type EvalOptions } from "./api";
-import type { AIAssessment, AIPlan, AITimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
+import type { AIAssessment, AIPlan, AITimeline, RegionAnalysis, RegionTimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
 
 export type View = "globe" | "site";
 export type Panel = "planner" | "compare" | "proposals" | null;
@@ -62,6 +62,10 @@ interface State {
   showModelCard: boolean;
   aiTimelines: Record<string, AITimeline>;
   aiMapStatus: "loading" | "ready" | null;
+  regions: Record<string, RegionAnalysis>;
+  regionLoading: Record<string, boolean>;
+  regionTimelines: Record<string, RegionTimeline>;
+  focusZone: string | null;
 
   init: () => Promise<void>;
   select: (id: string | null) => void;
@@ -96,7 +100,15 @@ interface State {
   toggleAiMap: () => void;
   setShowModelCard: (v: boolean) => void;
   loadAiTimeline: (id: string) => Promise<void>;
+  loadRegion: (id: string) => Promise<void>;
+  loadRegionTimeline: (id: string) => Promise<void>;
+  setFocusZone: (id: string | null) => void;
+  setRegionSize: (id: string, half_size_m: number) => void;
 }
+
+export const DEFAULT_HALF_SIZE = 3000;
+export const halfSizeOf = (site: { half_size_m?: number }) => site.half_size_m ?? DEFAULT_HALF_SIZE;
+export const regionKey = (id: string, landingTime: string, half: number) => `${id}|${landingTime}|${half}`;
 
 /** AI timelines start at 00:00 UTC two days before the touchdown time (stable while scrubbing). */
 export function aiTimelineKey(id: string, landingTime: string) {
@@ -146,6 +158,10 @@ export const useStore = create<State>((set, get) => ({
   showModelCard: false,
   aiTimelines: {},
   aiMapStatus: null,
+  regions: {},
+  regionLoading: {},
+  regionTimelines: {},
+  focusZone: null,
 
   init: async () => {
     const [sites] = await Promise.all([api.sites(), get().refreshSun(), get().loadProposals(), get().loadModelCard()]);
@@ -160,6 +176,8 @@ export const useStore = create<State>((set, get) => ({
       void get().loadTimeline(id);
       void get().assess(id);
       void get().loadAiTimeline(id);
+      void get().loadRegion(id);
+      void get().loadRegionTimeline(id);
     }
   },
   setFocusBackup: (id) => set({ focusBackup: id }),
@@ -170,6 +188,7 @@ export const useStore = create<State>((set, get) => ({
     if (selectedId) {
       void get().evaluate(selectedId);
       void get().assess(selectedId);
+      void get().loadRegion(selectedId);
     }
     compareIds.forEach((c) => void get().evaluate(c));
   },
@@ -198,7 +217,7 @@ export const useStore = create<State>((set, get) => ({
 
   addCustom: (lat, lon, name) => {
     const id = `custom-${Date.now().toString(36)}`;
-    const site: Site = { id, name: name ?? `Custom ${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon, group: "My candidates", custom: true };
+    const site: Site = { id, name: name ?? `Custom ${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon, group: "My candidates", custom: true, half_size_m: DEFAULT_HALF_SIZE };
     const sites = [...get().sites, site];
     set({ sites, placing: false });
     saveCustom(sites);
@@ -352,7 +371,7 @@ export const useStore = create<State>((set, get) => ({
   },
   runPlan: async (days = 30, stepHours = 12) => {
     const s = get();
-    const sites = s.sites.filter((x) => s.planSiteIds.includes(x.id)).map(({ id, name, lat, lon }) => ({ id, name, lat, lon }));
+    const sites = s.sites.filter((x) => s.planSiteIds.includes(x.id)).map(({ id, name, lat, lon, half_size_m }) => ({ id, name, lat, lon, half_size_m: half_size_m ?? DEFAULT_HALF_SIZE }));
     if (!sites.length) return;
     set({ planning: true, planError: null, panel: "planner" });
     try {
@@ -376,6 +395,44 @@ export const useStore = create<State>((set, get) => ({
   },
   toggleAiMap: () => set({ showAiMap: !get().showAiMap }),
   setShowModelCard: (v) => set({ showModelCard: v }),
+  loadRegion: async (id) => {
+    const s = get();
+    const site = s.sites.find((x) => x.id === id);
+    if (!site) return;
+    const key = regionKey(id, s.landingTime, halfSizeOf(site));
+    if (s.regions[key] || s.regionLoading[key]) return;
+    set({ regionLoading: { ...get().regionLoading, [key]: true } });
+    try {
+      const r = await api.region(site.lat, site.lon, halfSizeOf(site), s.landingTime);
+      set({ regions: { ...get().regions, [key]: r } });
+    } catch {
+      set({ regions: { ...get().regions, [key]: { available: false } as RegionAnalysis } });
+    } finally {
+      set({ regionLoading: { ...get().regionLoading, [key]: false } });
+    }
+  },
+  loadRegionTimeline: async (id) => {
+    const s = get();
+    const site = s.sites.find((x) => x.id === id);
+    if (!site) return;
+    const { key, start } = aiTimelineKey(id, s.landingTime);
+    const k = `${key}|${halfSizeOf(site)}`;
+    if (s.regionTimelines[k]) return;
+    try {
+      const tl = await api.regionTimeline(site.lat, site.lon, halfSizeOf(site), start, 32, 6);
+      set({ regionTimelines: { ...get().regionTimelines, [k]: tl } });
+    } catch {
+      /* AI offline */
+    }
+  },
+  setFocusZone: (id) => set({ focusZone: id }),
+  setRegionSize: (id, half) => {
+    const sites = get().sites.map((x) => (x.id === id ? { ...x, half_size_m: half } : x));
+    set({ sites });
+    saveCustom(sites);
+    void get().loadRegion(id);
+    void get().loadRegionTimeline(id);
+  },
   loadAiTimeline: async (id) => {
     const s = get();
     const site = s.sites.find((x) => x.id === id);
@@ -420,4 +477,25 @@ export function useAI(id: string | null | undefined) {
 
 export function useAILoading(id: string | null | undefined) {
   return useStore((s) => (id ? Boolean(s.aiLoading[aiKey(id, s.landingTime)]) : false));
+}
+
+export function useRegion(id: string | null | undefined) {
+  return useStore((s) => {
+    const site = id ? s.sites.find((x) => x.id === id) : undefined;
+    return site ? s.regions[regionKey(site.id, s.landingTime, halfSizeOf(site))] : undefined;
+  });
+}
+
+export function useRegionLoading(id: string | null | undefined) {
+  return useStore((s) => {
+    const site = id ? s.sites.find((x) => x.id === id) : undefined;
+    return site ? Boolean(s.regionLoading[regionKey(site.id, s.landingTime, halfSizeOf(site))]) : false;
+  });
+}
+
+export function useRegionTimeline(id: string | null | undefined) {
+  return useStore((s) => {
+    const site = id ? s.sites.find((x) => x.id === id) : undefined;
+    return site ? s.regionTimelines[`${aiTimelineKey(site.id, s.landingTime).key}|${halfSizeOf(site)}`] : undefined;
+  });
 }

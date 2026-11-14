@@ -6,7 +6,7 @@ import { fmtDist } from "@/lib/geo";
 import { useStore } from "@/lib/store";
 import type { AIPlan } from "@/lib/types";
 import { fmtTime } from "@/lib/ui";
-import { HEAD_META, SEQ_GRADIENT, pct, seqColor } from "./palette";
+import { SEQ_GRADIENT, pct, seqColor } from "./palette";
 import Source from "./Source";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
@@ -23,7 +23,7 @@ function Setup({ days, setDays, step, setStep }: { days: number; setDays: (n: nu
   const seg = (on: boolean) => `rounded px-2 py-1 text-[11px] ${on ? "bg-white/15 text-white" : "text-white/50 hover:text-white"}`;
   return (
     <div className="flex w-60 shrink-0 flex-col border-r border-white/[0.06] pr-3">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Candidate sites ({planSiteIds.length})</div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Candidate regions ({planSiteIds.length})</div>
       <div className="mt-1.5 flex-1 space-y-0.5 overflow-y-auto pr-1">
         {polar.map((s) => (
           <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] text-white/80 hover:bg-white/5">
@@ -59,7 +59,7 @@ function Setup({ days, setDays, step, setStep }: { days: number; setDays: (n: nu
           className="flex w-full items-center justify-center gap-2 rounded-md bg-sky-400 px-3 py-2 text-[12px] font-semibold text-slate-950 transition hover:bg-sky-300 disabled:opacity-50"
         >
           {planning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          {planning ? "AI is planning…" : "Find best site & time"}
+          {planning ? "AI is planning…" : "Find best region & time"}
         </button>
       </div>
     </div>
@@ -87,12 +87,14 @@ function Heatmap({ plan }: { plan: AIPlan }) {
     return out;
   }, [times]);
   const cellW = `calc((100% - 0px) / ${times.length})`;
-  const h = hover ? { site: names[hover.i], time: times[hover.j], p: success[hover.i][hover.j] } : null;
+  const h = hover
+    ? { site: names[hover.i], time: times[hover.j], p: plan.matrix.best_success?.[hover.i][hover.j] ?? success[hover.i][hover.j], v: plan.matrix.viable_share?.[hover.i][hover.j] }
+    : null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col px-3">
       <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
-        Predicted landing success by site and touchdown time <Source kind="ai" />
+        Region × touchdown time: best landing spot, weighted by viable area <Source kind="ai" />
         <span className="ml-auto flex items-center gap-1.5 font-normal normal-case tracking-normal text-white/45">
           0%
           <span className="h-2 w-28 rounded-sm" style={{ background: SEQ_GRADIENT }} />
@@ -147,7 +149,13 @@ function Heatmap({ plan }: { plan: AIPlan }) {
       <div className="mt-1 h-5 text-[11px] text-white/70">
         {h ? (
           <>
-            <span className="font-medium text-white">{h.site}</span> · {fmtTime(h.time)} · AI success <span className="font-semibold text-white">{pct(h.p)}</span>{" "}
+            <span className="font-medium text-white">{h.site}</span> · {fmtTime(h.time)} · best spot <span className="font-semibold text-white">{pct(h.p)}</span>
+            {h.v !== undefined && (
+              <>
+                {" "}
+                · <span className="font-semibold text-white">{pct(h.v)}</span> of region viable
+              </>
+            )}{" "}
             <span className="text-white/40">(click to inspect)</span>
           </>
         ) : (
@@ -182,14 +190,20 @@ function PlanCard({ plan }: { plan: AIPlan }) {
         </div>
         <div className="text-right text-2xl font-semibold tabular-nums text-white">{pct(plan.primary.success_probability)}</div>
       </div>
-      <div className="mt-1.5 grid grid-cols-4 gap-1">
-        {Object.entries(plan.primary.heads).map(([k, v]) => (
-          <div key={k} className="rounded bg-white/[0.04] px-1.5 py-1">
-            <div className="truncate text-[9.5px] text-white/45">{HEAD_META[k]?.short ?? k}</div>
-            <div className="text-[11.5px] font-semibold tabular-nums text-white/90">{pct(v)}</div>
-          </div>
-        ))}
-      </div>
+      {plan.region_stats && (
+        <div className="mt-1.5 grid grid-cols-3 gap-1">
+          {[
+            ["Viable area", `${plan.region_stats.viable_km2} km²`],
+            ["Of region", pct(plan.region_stats.viable_share)],
+            ["Zones", String(plan.region_stats.zones)],
+          ].map(([k, v]) => (
+            <div key={k} className="rounded bg-white/[0.04] px-1.5 py-1">
+              <div className="truncate text-[9.5px] text-white/45">{k}</div>
+              <div className="text-[11.5px] font-semibold tabular-nums text-white/90">{v}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <button
         onClick={applyPlan}
         className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${applied ? "bg-white/10 text-white/70" : "bg-sky-400 text-slate-950 hover:bg-sky-300"}`}
@@ -214,22 +228,19 @@ function PlanCard({ plan }: { plan: AIPlan }) {
         </>
       )}
 
-      {plan.backups.length > 0 && (
+      {plan.zones && plan.zones.length > 0 && (
         <>
           <div className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
-            <MapPin size={11} /> Backup sites (if the spot is blocked)
+            <MapPin size={11} /> Landing zones (Z1 target, others backups)
           </div>
           <div className="mt-1 space-y-1">
-            {plan.backups.map((b) => (
-              <div key={b.rank} className="rounded bg-white/[0.03] px-2 py-1 text-[11px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-white/85">
-                    B{b.rank} · {fmtDist(b.distance_m)} {b.direction}
-                  </span>
-                  <span className="text-white/40">decide by T−{b.decide_by_s}s</span>
-                  <span className="font-semibold tabular-nums text-white">{pct(b.success_probability)}</span>
-                </div>
-                <div className="text-[10px] text-white/45">{b.reason}</div>
+            {plan.zones.map((z) => (
+              <div key={z.id} className="flex items-center justify-between gap-2 rounded bg-white/[0.03] px-2 py-1 text-[11px]">
+                <span className="text-white/85">
+                  {z.id} · {z.area_km2} km²
+                </span>
+                <span className="text-white/40">{z.from_primary ? `${fmtDist(z.from_primary.distance_m)} ${z.from_primary.direction} · T−${z.from_primary.decide_by_s}s` : "primary target"}</span>
+                <span className="font-semibold tabular-nums text-white">{pct(z.mean_success)}</span>
               </div>
             ))}
           </div>
@@ -272,8 +283,9 @@ export default function AIPlanner() {
             "The AI model isn't trained yet."
           ) : (
             <span>
-              Pick candidate sites and a period, then let the AI find the best <b className="text-white/80">site</b>, the best <b className="text-white/80">touchdown time</b>, backup
-              times in case the launch slips and backup sites in case the spot is blocked.
+              Pick candidate regions and a period, then let the AI find the best <b className="text-white/80">region</b> and{" "}
+              <b className="text-white/80">touchdown time</b>, the landing zones inside it (primary + backups), backup times in case the launch slips and a
+              backup region.
             </span>
           )}
         </div>

@@ -3,15 +3,16 @@
 import { CheckCircle2, FilePlus2, Loader2, Mountain, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, ComposedChart } from "recharts";
-import { fmtDist, fmtLat, fmtLon } from "@/lib/geo";
-import { useAI, useAILoading, useEval, useSelected, useStore } from "@/lib/store";
-import type { BackupSite, Evaluation, Factor, Timeline } from "@/lib/types";
-import { TIER_COLOR, fmtTime, scoreColor } from "@/lib/ui";
+import { fmtLat, fmtLon } from "@/lib/geo";
+import { useEval, useRegion, useRegionLoading, useSelected, useStore } from "@/lib/store";
+import type { Evaluation, Factor, Timeline } from "@/lib/types";
+import { fmtTime, scoreColor } from "@/lib/ui";
 import { VerdictChip } from "./Chip";
 import AIVerdict from "./ai/AIVerdict";
+import RegionVerdict from "./ai/RegionVerdict";
 import Source from "./ai/Source";
 
-type Tab = "ai" | "score" | "backups" | "windows";
+type Tab = "region" | "ai" | "score" | "windows";
 
 function FactorRow({ f }: { f: Factor }) {
   const col = f.hard_fail ? "#f87171" : scoreColor(f.score);
@@ -44,111 +45,6 @@ function ScoreTab({ ev }: { ev: Evaluation }) {
         Terrain: {ev.terrain.source} ({Math.round(ev.terrain.resolution_m)} m detail) · tilt {ev.terrain.slope_deg.toFixed(1)}° · relief{" "}
         {Math.round(ev.terrain.relief_m)} m
         {ai && <> · AI ground check {Math.round(ai.p_safe * 100)}% safe</>}
-      </div>
-    </div>
-  );
-}
-
-function BackupCard({ b, active, onClick, onPromote }: { b: BackupSite; active: boolean; onClick: () => void; onPromote: () => void }) {
-  const color = TIER_COLOR[b.tier];
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full rounded-lg border p-2.5 text-left transition ${active ? "border-white/30 bg-white/[0.07]" : "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05]"}`}
-    >
-      <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold text-slate-950" style={{ background: color }}>
-          {b.id}
-        </span>
-        <div className="flex-1">
-          <div className="text-[12px] font-medium text-white">
-            {fmtDist(b.distance_m)} {b.direction}
-            <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wider" style={{ color }}>
-              {b.tier_label}
-            </span>
-          </div>
-        </div>
-        <VerdictChip v={b.verdict} />
-        <span className="w-7 text-right text-sm font-semibold tabular-nums" style={{ color: scoreColor(b.overall) }}>
-          {Math.round(b.overall)}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-white/55">
-        <div>
-          <div className="text-white/35">Decide by</div>
-          <div className="font-medium text-white/80">T−{b.divert.decide_by_s}s</div>
-        </div>
-        <div>
-          <div className="text-white/35">Hover hop</div>
-          <div className={`font-medium ${b.divert.within_reserve ? "text-white/80" : "text-amber-300"}`}>
-            {b.divert.hover_seconds}s {b.divert.within_reserve ? "" : "(over)"}
-          </div>
-        </div>
-        <div>
-          <div className="text-white/35">Tilt</div>
-          <div className="font-medium text-white/80">{b.terrain.slope_deg.toFixed(1)}°</div>
-        </div>
-      </div>
-      {active && (
-        <div className="mt-2 flex justify-end">
-          <span
-            role="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPromote();
-            }}
-            className="rounded-md bg-white/10 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/20"
-          >
-            Make this the primary site →
-          </span>
-        </div>
-      )}
-    </button>
-  );
-}
-
-function BackupsTab({ ev }: { ev: Evaluation }) {
-  const focus = useStore((s) => s.focusBackup);
-  const setFocus = useStore((s) => s.setFocusBackup);
-  const setView = useStore((s) => s.setView);
-  const promote = useStore((s) => s.promoteBackup);
-  const selectedId = useStore((s) => s.selectedId);
-  const f = ev.factors.find((x) => x.key === "backups");
-  const better = ev.backups?.filter((b) => b.overall > ev.overall + 5 && b.verdict !== "no-go") ?? [];
-  if (!ev.backups?.length) return <div className="text-sm text-white/50">No safe fallback found within divert range. Try a larger divert range.</div>;
-  return (
-    <div className="space-y-2">
-      <div className="rounded-md bg-white/[0.03] p-2.5 text-[11px] leading-snug text-white/60">
-        {f?.summary} If the primary spot is blocked during descent, the lander retargets to the first backup that is still reachable.
-      </div>
-      {better.length > 0 && (
-        <div className="rounded-md border border-emerald-400/30 bg-emerald-400/[0.07] p-2.5 text-[11px] text-emerald-200">
-          {better.map((b) => b.id).join(", ")} {better.length > 1 ? "score" : "scores"} higher than the primary. Consider promoting{" "}
-          <button className="font-semibold underline" onClick={() => selectedId && promote(selectedId, better[0].id)}>
-            {better[0].id}
-          </button>{" "}
-          to primary; it then gets its own set of backups.
-        </div>
-      )}
-      {ev.backups.map((b) => (
-        <BackupCard
-          key={b.id}
-          b={b}
-          active={focus === b.id}
-          onPromote={() => selectedId && promote(selectedId, b.id)}
-          onClick={() => {
-            setFocus(focus === b.id ? null : b.id);
-            setView("site");
-          }}
-        />
-      ))}
-      <div className="flex gap-3 pt-1 text-[10px] text-white/40">
-        {ev.divert?.tiers.map((t) => (
-          <span key={t.key} className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full" style={{ background: TIER_COLOR[t.key] }} />
-            {t.label} {t.max_m ? `≤${fmtDist(t.max_m)}` : ""}
-          </span>
-        ))}
       </div>
     </div>
   );
@@ -233,18 +129,19 @@ function WindowsTab({ tl, landingTime }: { tl?: Timeline; landingTime: string })
 }
 
 function HeaderMetrics({ siteId, ev, loading }: { siteId: string; ev?: Evaluation; loading: boolean }) {
-  const ai = useAI(siteId);
-  const aiLoading = useAILoading(siteId);
-  const p = ai?.available ? (ai.success_probability ?? 0) : null;
+  const region = useRegion(siteId);
+  const aiLoading = useRegionLoading(siteId);
+  const p = region?.available ? region.stats.best_success : null;
   return (
     <div className="mt-3 grid grid-cols-2 gap-2">
       <div className="rounded-lg bg-sky-400/[0.07] p-2.5 ring-1 ring-sky-300/20">
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/50">
-          AI success <Source kind="ai" />
+          Best spot · viable area <Source kind="ai" />
         </div>
         <div className="mt-0.5 flex items-baseline gap-1 text-[26px] font-semibold leading-none tabular-nums text-white">
           {p !== null ? Math.round(p * 100) : aiLoading ? <Loader2 size={18} className="animate-spin text-white/40" /> : "—"}
           {p !== null && <span className="text-sm text-white/55">%</span>}
+          {region?.available && <span className="ml-1.5 text-[13px] font-medium text-white/70">· {region.stats.viable_km2} km²</span>}
         </div>
       </div>
       <div className="rounded-lg bg-white/[0.03] p-2.5 ring-1 ring-white/10">
@@ -274,16 +171,16 @@ export default function SitePanel() {
   const propose = useStore((s) => s.propose);
   const setView = useStore((s) => s.setView);
   const suggestAround = useStore((s) => s.suggestAround);
-  const [tab, setTab] = useState<Tab>("ai");
+  const [tab, setTab] = useState<Tab>("region");
   const [proposed, setProposed] = useState<string | null>(null);
 
   if (!site) {
     return (
       <aside className="flex w-[400px] shrink-0 flex-col items-center justify-center gap-3 border-l border-white/10 bg-slate-950 p-8 text-center">
         <Sparkles className="text-sky-300/70" />
-        <div className="text-sm text-white/80">Pick a candidate on the left, click the Moon to add your own, or let the AI plan.</div>
+        <div className="text-sm text-white/80">Pick a candidate region on the left, click the Moon to add your own, or let the AI plan.</div>
         <div className="text-xs leading-relaxed text-white/40">
-          The AI predicts how likely a landing is to succeed at any site and time, suggests the best touchdown times, and keeps backup sites and backup times ready.
+          Candidates are regions, as in NASA planning. For each region and touchdown time the AI maps where a landing would succeed, finds the landing zones that fit the landing ellipse, and shows when the region is open.
         </div>
       </aside>
     );
@@ -331,9 +228,9 @@ export default function SitePanel() {
       <div className="flex border-b border-white/10 px-2">
         {(
           [
-            ["ai", "AI verdict"],
-            ["score", "Scorecard"],
-            ["backups", `Backups${ev?.backups ? ` (${ev.backups.length})` : ""}`],
+            ["region", "Region"],
+            ["ai", "Spot AI"],
+            ["score", "Rules"],
             ["windows", "Sun & Earth"],
           ] as [Tab, string][]
         ).map(([k, l]) => (
@@ -343,16 +240,16 @@ export default function SitePanel() {
         ))}
       </div>
       <div className="flex-1 overflow-y-auto p-4">
-        {tab === "ai" ? (
+        {tab === "region" ? (
+          <RegionVerdict site={site} />
+        ) : tab === "ai" ? (
           <AIVerdict site={site} />
         ) : tab === "windows" ? (
           <WindowsTab tl={tl} landingTime={landingTime} />
         ) : !ev ? (
           <div className="text-sm text-white/40">{loading ? "Evaluating…" : ""}</div>
-        ) : tab === "score" ? (
-          <ScoreTab ev={ev} />
         ) : (
-          <BackupsTab ev={ev} />
+          <ScoreTab ev={ev} />
         )}
       </div>
     </aside>
