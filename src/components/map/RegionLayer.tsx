@@ -156,14 +156,26 @@ const RegionFootprint = memo(function RegionFootprint({ S, site, summary, select
       />
       {showLabel && (
         <Html position={anchor} center style={{ pointerEvents: "none" }} zIndexRange={[20, 0]}>
-          <div className={`-translate-y-5 whitespace-nowrap rounded-md border px-2 py-1 shadow-lg ${selected ? "border-cyan-300/60 bg-slate-950/95" : "border-white/10 bg-slate-950/90"}`}>
+          <button
+            type="button"
+            title={`Select ${site.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              select(site.id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerEnter={() => setHover(true)}
+            onPointerLeave={() => setHover(false)}
+            style={{ pointerEvents: "auto" }}
+            className={`block -translate-y-5 cursor-pointer whitespace-nowrap rounded-md border px-2 py-1 text-left shadow-lg transition-colors ${selected ? "border-cyan-300/60 bg-slate-950/95" : "border-white/10 bg-slate-950/90 hover:border-white/40"}`}
+          >
             <div className={`text-[11px] font-semibold leading-tight ${selected ? "text-cyan-100" : "text-white"}`}>{site.name}</div>
             <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium leading-tight tabular-nums">
               {look.verdict && <span className="h-1.5 w-1.5 rounded-full" style={{ background: OUTLINE[look.verdict] }} />}
               <span className={look.verdict ? LABEL_TONE[look.verdict] : "text-white/45"}>{look.short}</span>
               <span className="text-white/55">{look.detail}</span>
             </div>
-          </div>
+          </button>
         </Html>
       )}
     </group>

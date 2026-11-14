@@ -35,6 +35,9 @@ interface State {
   selectedId: string | null;
   focusBackup: string | null;
   landingTime: string;
+  /** Start of the visible month-long time track. Stays put while the chosen time is inside it,
+   *  so dragging the time doesn't re-centre the track under the cursor. */
+  timeAnchor: string;
   profile: Profile;
   divertRadius: number;
   missionHours: number;
@@ -121,11 +124,27 @@ export const halfSizeOf = (site: { half_size_m?: number }) => site.half_size_m ?
 export const regionKey = (id: string, landingTime: string, half: number) => `${id}|${landingTime}|${half}`;
 
 /** AI timelines start at 00:00 UTC two days before the touchdown time (stable while scrubbing). */
-export function aiTimelineKey(id: string, landingTime: string) {
+export const TRACK_DAYS = 32;
+
+/** Track start for a time: midnight UTC two days before it. */
+function anchorFor(landingTime: string) {
   const d = new Date(landingTime);
   d.setUTCHours(0, 0, 0, 0);
   d.setUTCDate(d.getUTCDate() - 2);
-  return { key: `${id}|${d.toISOString().slice(0, 10)}`, start: d.toISOString() };
+  return d.toISOString();
+}
+
+/** Keep the current track while the time is comfortably inside it; otherwise start a new one. */
+export function keepAnchor(landingTime: string, anchor: string | undefined) {
+  if (!anchor) return anchorFor(landingTime);
+  const t = new Date(landingTime).getTime();
+  const a = new Date(anchor).getTime();
+  return t >= a && t <= a + (TRACK_DAYS - 1) * 86400e3 ? anchor : anchorFor(landingTime);
+}
+
+/** Timelines are fetched per track (site + track start), not per touchdown time. */
+export function aiTimelineKey(id: string, anchor: string) {
+  return { key: `${id}|${anchor.slice(0, 10)}`, start: anchor };
 }
 
 export const aiKey = (id: string, landingTime: string) => `${id}|${landingTime}`;
@@ -140,6 +159,7 @@ export const useStore = create<State>((set, get) => ({
   selectedId: null,
   focusBackup: null,
   landingTime: roundHour(),
+  timeAnchor: anchorFor(roundHour()),
   profile: "balanced",
   divertRadius: 3000,
   missionHours: 156,
@@ -179,7 +199,8 @@ export const useStore = create<State>((set, get) => ({
   init: async () => {
     // the module-level default was computed when the module loaded (on the server: possibly hours
     // ago); start the session at the current hour on the client
-    set({ landingTime: roundHour() });
+    const now = roundHour();
+    set({ landingTime: now, timeAnchor: anchorFor(now) });
     const [sites] = await Promise.all([api.sites(), get().refreshSun(), get().loadProposals(), get().loadModelCard()]);
     const all = [...sites, ...loadCustom()];
     set({ sites: all, planSiteIds: all.filter((x) => x.group === "Artemis III region").map((x) => x.id) });
@@ -199,7 +220,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setFocusBackup: (id) => set({ focusBackup: id }),
   setLandingTime: (iso) => {
-    set({ landingTime: iso });
+    set({ landingTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor) });
     void get().refreshSun();
     void get().loadSummaries();
     const { selectedId, compareIds } = get();
@@ -207,6 +228,9 @@ export const useStore = create<State>((set, get) => ({
       void get().evaluate(selectedId);
       void get().assess(selectedId);
       void get().loadRegion(selectedId);
+      // the time track may have moved to a new month: fetch its timelines (cached ones are skipped)
+      void get().loadAiTimeline(selectedId);
+      void get().loadRegionTimeline(selectedId);
     }
     compareIds.forEach((c) => void get().evaluate(c));
   },
@@ -407,7 +431,7 @@ export const useStore = create<State>((set, get) => ({
     get().setLandingTimeAndSelect(plan.primary.site_id, plan.primary.landing_time);
   },
   setLandingTimeAndSelect: (id, iso) => {
-    set({ landingTime: iso });
+    set({ landingTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor) });
     void get().refreshSun();
     get().select(id);
   },
@@ -433,11 +457,11 @@ export const useStore = create<State>((set, get) => ({
     const s = get();
     const site = s.sites.find((x) => x.id === id);
     if (!site) return;
-    const { key, start } = aiTimelineKey(id, s.landingTime);
+    const { key, start } = aiTimelineKey(id, s.timeAnchor);
     const k = `${key}|${halfSizeOf(site)}`;
     if (s.regionTimelines[k]) return;
     try {
-      const tl = await api.regionTimeline(site.lat, site.lon, halfSizeOf(site), start, 32, 6);
+      const tl = await api.regionTimeline(site.lat, site.lon, halfSizeOf(site), start, TRACK_DAYS, 6);
       set({ regionTimelines: { ...get().regionTimelines, [k]: tl } });
     } catch {
       /* AI offline */
@@ -470,10 +494,10 @@ export const useStore = create<State>((set, get) => ({
     const s = get();
     const site = s.sites.find((x) => x.id === id);
     if (!site) return;
-    const { key, start } = aiTimelineKey(id, s.landingTime);
+    const { key, start } = aiTimelineKey(id, s.timeAnchor);
     if (s.aiTimelines[key]) return;
     try {
-      const tl = await api.aiTimeline(site.lat, site.lon, start, 32, 6);
+      const tl = await api.aiTimeline(site.lat, site.lon, start, TRACK_DAYS, 6);
       set({ aiTimelines: { ...get().aiTimelines, [key]: tl } });
     } catch {
       /* AI offline */
@@ -489,7 +513,7 @@ export const useStore = create<State>((set, get) => ({
       set({ sites });
       saveCustom(sites);
     }
-    set({ landingTime: p.landing_time, profile: p.profile, divertRadius: ev.divert?.radius_m ?? get().divertRadius });
+    set({ landingTime: p.landing_time, timeAnchor: keepAnchor(p.landing_time, get().timeAnchor), profile: p.profile, divertRadius: ev.divert?.radius_m ?? get().divertRadius });
     set({ evals: { ...get().evals, [evalKey(site.id, get())]: ev } });
     void get().refreshSun();
     get().select(site.id);
@@ -529,6 +553,6 @@ export function useRegionLoading(id: string | null | undefined) {
 export function useRegionTimeline(id: string | null | undefined) {
   return useStore((s) => {
     const site = id ? s.sites.find((x) => x.id === id) : undefined;
-    return site ? s.regionTimelines[`${aiTimelineKey(site.id, s.landingTime).key}|${halfSizeOf(site)}`] : undefined;
+    return site ? s.regionTimelines[`${aiTimelineKey(site.id, s.timeAnchor).key}|${halfSizeOf(site)}`] : undefined;
   });
 }

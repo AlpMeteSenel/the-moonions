@@ -165,7 +165,7 @@ export default function AIVerdict({ site }: { site: Site }) {
   const ai = useAI(site.id);
   const loading = useAILoading(site.id);
   const landingTime = useStore((s) => s.landingTime);
-  const tl = useStore((s) => s.aiTimelines[aiTimelineKey(site.id, s.landingTime).key]);
+  const tl = useStore((s) => s.aiTimelines[aiTimelineKey(site.id, s.timeAnchor).key]);
   const setLandingTime = useStore((s) => s.setLandingTime);
   const setShowModelCard = useStore((s) => s.setShowModelCard);
 

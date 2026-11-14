@@ -2,11 +2,11 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { aiTimelineKey, useRegionTimeline, useSelected, useStore } from "@/lib/store";
+import { TRACK_DAYS, useRegionTimeline, useSelected, useStore } from "@/lib/store";
 import { fmtTime } from "@/lib/ui";
 
 const DAY = 86400e3;
-const SPAN_DAYS = 32;
+const SPAN_DAYS = TRACK_DAYS;
 
 function roundHour(t: number) {
   return Math.round(t / 3600e3) * 3600e3;
@@ -20,7 +20,7 @@ export default function TimeScrubber() {
   const tl = useRegionTimeline(site?.id);
   const ref = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<number | null>(null);
-  const [anchorIso] = [aiTimelineKey("x", landingTime).start];
+  const anchorIso = useStore((s) => s.timeAnchor);
   const t0 = new Date(anchorIso).getTime();
   const t1 = t0 + SPAN_DAYS * DAY;
   const cur = preview ?? new Date(landingTime).getTime();

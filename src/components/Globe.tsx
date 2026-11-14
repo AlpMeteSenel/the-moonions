@@ -227,14 +227,25 @@ function Marker({ id, lat, lon, name, color, selected, score }: { id: string; la
       )}
       {big && (
         <Html center style={{ pointerEvents: "none" }} zIndexRange={[20, 0]}>
-          <div className="-translate-y-6 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[11px] font-medium text-white shadow-lg">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              select(id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerEnter={() => setHover(true)}
+            onPointerLeave={() => setHover(false)}
+            style={{ pointerEvents: "auto" }}
+            className="block -translate-y-6 cursor-pointer whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[11px] font-medium text-white shadow-lg hover:border-white/40"
+          >
             {name}
             {score !== undefined && (
               <span className="ml-2 font-semibold" style={{ color }}>
                 {Math.round(score)}
               </span>
             )}
-          </div>
+          </button>
         </Html>
       )}
     </group>
