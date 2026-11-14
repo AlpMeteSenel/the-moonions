@@ -65,14 +65,14 @@ export default function TimeScrubber() {
           {tl?.available && site ? (
             <>
               <span className="flex items-center gap-1">
-                <span className="h-2 w-3 rounded-sm bg-[#3987e5]/70" /> {site.name.split(" · ")[0]}: share open
+                <span className="h-2 w-3 rounded-sm bg-[#3987e5]/70" /> {site.name.split(" · ")[0]}: landable share
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-1 w-3 rounded-sm bg-[#cde2fb]" /> landing windows
               </span>
             </>
           ) : (
-            <span>Select a region to see when it is open</span>
+            <span>Select a region to see its landing windows</span>
           )}
           <button onClick={() => step(-6)} className="rounded p-0.5 text-white/60 hover:bg-white/10 hover:text-white" title="6 hours earlier">
             <ChevronLeft size={14} />

@@ -119,7 +119,7 @@ function Windows({ tl, landingTime, onPick }: { tl?: RegionTimeline; landingTime
         </span>
       </div>
       <div className="space-y-1">
-        {tl.windows.length === 0 && <div className="text-[11px] text-red-300">This region doesn&apos;t open in the next month.</div>}
+        {tl.windows.length === 0 && <div className="text-[11px] text-red-300">No landing window for this region in the next month.</div>}
         {tl.windows.slice(0, 4).map((w, i) => {
           const active = new Date(w.start).getTime() <= lt && lt < new Date(w.end).getTime();
           return (
@@ -237,7 +237,7 @@ export default function RegionVerdict({ site }: { site: Site }) {
         </>
       )}
 
-      <Title source="ai">When this region is open</Title>
+      <Title source="ai">Landing windows</Title>
       <Windows tl={tl} landingTime={landingTime} onPick={setLandingTime} />
     </div>
   );

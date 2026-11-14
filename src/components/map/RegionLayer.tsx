@@ -74,11 +74,19 @@ function useVisibleFrom(p: THREE.Vector3, maxDist: number) {
   return vis;
 }
 
+const LIMIT_TEXT: Record<string, string> = {
+  sunlight: "in shadow",
+  power: "too little sun for power",
+  earth_link: "no Earth link",
+  terrain: "terrain too steep",
+};
+
 function summaryText(s?: RegionSummary) {
-  if (!s) return { text: "…", tone: "text-white/50" };
-  if (!s.available) return { text: "no AI data", tone: "text-white/40" };
-  if ((s.viable_km2 ?? 0) <= 0) return { text: "closed now", tone: "text-white/45" };
-  return { text: `${s.viable_km2 && s.viable_km2 >= 10 ? Math.round(s.viable_km2) : s.viable_km2} km² open`, tone: "text-sky-200" };
+  if (!s) return { text: "assessing…", tone: "text-white/50" };
+  if (!s.available) return { text: "outside AI coverage", tone: "text-white/40" };
+  if ((s.viable_km2 ?? 0) <= 0) return { text: `No safe landing now · ${LIMIT_TEXT[s.limiting ?? "terrain"]}`, tone: "text-amber-200/80" };
+  const km2 = s.viable_km2! >= 10 ? Math.round(s.viable_km2!) : s.viable_km2;
+  return { text: `${Math.round((s.viable_share ?? 0) * 100)}% landable · ${km2} km²`, tone: "text-sky-200" };
 }
 
 const RegionFootprint = memo(function RegionFootprint({ site, summary, selected, labelSlot }: { site: Site; summary?: RegionSummary; selected: boolean; labelSlot: boolean }) {
@@ -179,7 +187,7 @@ function SelectedZones() {
 
 /**
  * Label decluttering: project every region label to the screen each frame and place them greedily
- * (selected first, then by open area); labels that would overlap a placed one are hidden until hovered.
+ * (selected first, then by landable area); labels that would overlap a placed one are hidden until hovered.
  */
 function useLabelSlots(regions: Site[], summaries: Record<string, RegionSummary> | undefined, selectedId: string | null) {
   const { camera, size } = useThree();

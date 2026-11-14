@@ -322,4 +322,6 @@ export interface RegionSummary {
   viable_share?: number;
   viable_km2?: number;
   best_success?: number;
+  shares?: { terrain: number; sunlight: number; power: number; earth_link: number };
+  limiting?: "terrain" | "sunlight" | "power" | "earth_link";
 }

@@ -46,11 +46,11 @@ export default function MapHud() {
             <span className="h-3.5 w-3.5 rounded-[3px] border border-white/70" style={{ background: "#3987e5" }} />
             <span className="text-[11.5px] font-medium text-white/85">Candidate landing region</span>
           </div>
-          <div className="mt-1.5 text-[10.5px] leading-snug text-white/55">Colour = share of the region where a landing would succeed at this time (AI touchdown safety × sunlight, power and Earth link).</div>
+          <div className="mt-1.5 text-[10.5px] leading-snug text-white/55">Colour = share of the region where a landing at this time is predicted to succeed: safe touchdown (AI) with sunlight, power and an Earth link (physics).</div>
           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-white/50">
-            <span>closed</span>
+            <span>0%</span>
             <span className="h-2 flex-1 rounded-sm" style={{ background: SEQ_GRADIENT }} />
-            <span>fully open</span>
+            <span>100% landable</span>
           </div>
           {showAiMap && <div className="mt-1.5 text-[10.5px] leading-snug text-white/45">The glow on the terrain shows the same AI map in finer detail.</div>}
           <div className="mt-2 flex items-center gap-3 text-[10.5px] text-white/55">

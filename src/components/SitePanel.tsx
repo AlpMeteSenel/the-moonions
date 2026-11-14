@@ -180,7 +180,7 @@ export default function SitePanel() {
         <Sparkles className="text-sky-300/70" />
         <div className="text-sm text-white/80">Pick a candidate region on the left, click the Moon to add your own, or let the AI plan.</div>
         <div className="text-xs leading-relaxed text-white/40">
-          Candidates are regions, as in NASA planning. For each region and touchdown time the AI maps where a landing would succeed, finds the landing zones that fit the landing ellipse, and shows when the region is open.
+          Candidates are regions, as in NASA planning. For each region and touchdown time the AI maps where a landing would succeed, finds the landing zones that fit the landing ellipse, and shows the landing windows.
         </div>
       </aside>
     );
