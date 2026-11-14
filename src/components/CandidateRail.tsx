@@ -5,7 +5,8 @@ import { memo, useMemo, useState } from "react";
 import { fmtLat, fmtLon } from "@/lib/geo";
 import { evalKey, halfSizeOf, regionKey, useStore } from "@/lib/store";
 import type { Site } from "@/lib/types";
-import { scoreColor } from "@/lib/ui";
+import { scoreColor, VERDICT } from "@/lib/ui";
+import { regionAssessment } from "@/lib/regionAssessment";
 
 const ORDER = ["My candidates", "Artemis III region", "South pole", "Historic landing"];
 
@@ -19,6 +20,7 @@ const Row = memo(function Row({ site }: { site: Site }) {
   const toggleCompare = useStore((s) => s.toggleCompare);
   const removeSite = useStore((s) => s.removeSite);
   const viable = region?.available ? region.stats.viable_km2 : undefined;
+  const assessment = region?.available ? regionAssessment(region) : undefined;
   return (
     <div
       onClick={() => select(site.id)}
@@ -42,14 +44,19 @@ const Row = memo(function Row({ site }: { site: Site }) {
         </div>
       </div>
       {viable !== undefined && (
-        <span className="rounded bg-sky-400/15 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-sky-200" title="AI: viable landing area in this region at the touchdown time">
+        <span
+          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums"
+          style={{ color: VERDICT[assessment!.verdict].color, background: VERDICT[assessment!.verdict].bg }}
+          title={`${assessment!.label}. ${assessment!.reasons.join(" ")}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: VERDICT[assessment!.verdict].color }} />
           {viable >= 10 ? Math.round(viable) : viable} km²
         </span>
       )}
       {loading ? (
         <Loader2 size={14} className="animate-spin text-white/40" />
-      ) : ev ? (
-        <span className="w-6 text-right text-[12px] font-semibold tabular-nums" style={{ color: scoreColor(ev.overall) }} title="Rule-based score">
+      ) : ev && !assessment ? (
+        <span className="w-6 text-right text-[12px] font-semibold tabular-nums" style={{ color: scoreColor(ev.overall) }} title="Rule-based score at the region centre only">
           {Math.round(ev.overall)}
         </span>
       ) : null}

@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ClipboardCheck, Columns3, Globe2, Layers, Mountain, Settings2, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { aiTimelineKey, useStore } from "@/lib/store";
+import { useRegionTimeline, useStore } from "@/lib/store";
 import type { Profile } from "@/lib/types";
 
 const PROFILES: { v: Profile; label: string; hint: string }[] = [
@@ -72,7 +72,8 @@ export default function TopBar() {
   const toggleAiMap = useStore((s) => s.toggleAiMap);
   const compareCount = useStore((s) => s.compareIds.length);
   const pending = useStore((s) => s.proposals.filter((p) => p.status === "pending").length);
-  const bestWindow = useStore((s) => (s.selectedId ? s.aiTimelines[aiTimelineKey(s.selectedId, s.landingTime).key]?.windows?.[0] : undefined));
+  const regionTimeline = useRegionTimeline(selectedId);
+  const bestWindow = regionTimeline?.available ? regionTimeline.windows[0] : undefined;
 
   const iconBtn = "flex h-7 w-7 items-center justify-center rounded text-white/60 hover:bg-white/10 hover:text-white";
   const tab = (on: boolean) => `flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${on ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5 hover:text-white"}`;
@@ -99,6 +100,7 @@ export default function TopBar() {
         <input
           type="datetime-local"
           value={landingTime.slice(0, 16)}
+          suppressHydrationWarning
           onChange={(e) => e.target.value && setLandingTime(new Date(e.target.value + ":00Z").toISOString())}
           className="rounded-md bg-slate-900 px-2 py-1 text-xs tabular-nums text-white [color-scheme:dark]"
         />
@@ -112,7 +114,7 @@ export default function TopBar() {
         <button
           disabled={!bestWindow}
           onClick={() => bestWindow && setLandingTime(bestWindow.best)}
-          title={bestWindow ? `AI's best touchdown time for this site (${Math.round(bestWindow.best_success * 100)}%)` : "Select a site to get the AI's best time"}
+          title={bestWindow ? `Best landing window for this region (${Math.round(bestWindow.best_success * 100)}% at the best spot)` : "No region landing window identified"}
           className="ml-1 flex items-center gap-1 rounded-md bg-sky-400/15 px-2 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-sky-400/25 disabled:opacity-35"
         >
           <Star size={12} /> Best time

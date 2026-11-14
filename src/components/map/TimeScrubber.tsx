@@ -56,10 +56,12 @@ export default function TimeScrubber() {
   const step = (h: number) => setLandingTime(new Date(roundHour(new Date(landingTime).getTime() + h * 3600e3)).toISOString());
 
   return (
-    <div className="absolute inset-x-3 bottom-3 rounded-xl border border-white/10 bg-slate-950/85 px-3 pb-2 pt-2 shadow-xl">
+    <div className="absolute inset-x-3 bottom-3 z-40 rounded-xl border border-white/10 bg-slate-950/85 px-3 pb-2 pt-2 shadow-xl">
       <div className="mb-1 flex items-center gap-2 text-[10.5px]">
         <span className="font-semibold uppercase tracking-[0.14em] text-white/45">Time</span>
-        <span className="tabular-nums text-white">{fmtTime(new Date(cur).toISOString())}</span>
+        <span className="tabular-nums text-white" suppressHydrationWarning>
+          {fmtTime(new Date(cur).toISOString())}
+        </span>
         {preview !== null && <span className="text-white/40">release to set</span>}
         <span className="ml-auto flex items-center gap-2 text-white/45">
           {tl?.available && site ? (
@@ -72,7 +74,7 @@ export default function TimeScrubber() {
               </span>
             </>
           ) : (
-            <span>Select a region to see its landing windows</span>
+            <span>{site ? tl ? "Landing windows unavailable for this region" : "Computing this region’s landing windows…" : "Select a region to see its landing windows"}</span>
           )}
           <button onClick={() => step(-6)} className="rounded p-0.5 text-white/60 hover:bg-white/10 hover:text-white" title="6 hours earlier">
             <ChevronLeft size={14} />

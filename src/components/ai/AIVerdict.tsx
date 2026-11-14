@@ -188,10 +188,11 @@ export default function AIVerdict({ site }: { site: Site }) {
   const v = verdictText(p);
   return (
     <div>
+      <p className="mb-3 rounded-md bg-white/5 p-2.5 text-[11px] leading-relaxed text-white/60">This assessment is for the region centre, not Z1 or the whole region. Conditions can differ between landing zones.</p>
       <div className="flex items-end gap-4">
         <div>
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
-            Landing success likelihood <Source kind="ai" />
+            Success at region centre <Source kind="ai" />
           </div>
           <div className="mt-0.5 text-[44px] font-semibold leading-none tabular-nums text-white">
             {Math.round(p * 100)}

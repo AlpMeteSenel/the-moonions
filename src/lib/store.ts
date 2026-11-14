@@ -177,6 +177,9 @@ export const useStore = create<State>((set, get) => ({
   showHistoric: false,
 
   init: async () => {
+    // the module-level default was computed when the module loaded (on the server: possibly hours
+    // ago); start the session at the current hour on the client
+    set({ landingTime: roundHour() });
     const [sites] = await Promise.all([api.sites(), get().refreshSun(), get().loadProposals(), get().loadModelCard()]);
     const all = [...sites, ...loadCustom()];
     set({ sites: all, planSiteIds: all.filter((x) => x.group === "Artemis III region").map((x) => x.id) });

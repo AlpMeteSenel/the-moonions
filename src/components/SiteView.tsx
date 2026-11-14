@@ -161,18 +161,29 @@ function ZoneMarker({ z, ellipse, y, primary, active, onClick, scale }: { z: Lan
     <group position={pos}>
       <Ring radiusM={ellipse} y={y + 0.03} color={color} opacity={active || primary ? 1 : 0.8} />
       <Ring radiusM={Math.min(z.margin_m, ellipse * 4)} y={y + 0.03} color={color} dashed opacity={0.35} />
-      <Pin pos={[0, y, 0]} color={color} label={z.id} sub={`${Math.round(z.mean_success * 100)}%`} big={primary} active={active} onClick={onClick} scale={scale} />
+      <Pin pos={[0, y, 0]} color={color} label={z.id} sub={`${Math.round(z.mean_success * 100)}% here`} big={primary} active={active} onClick={onClick} scale={scale} />
     </group>
   );
 }
 
-function FrameCamera({ size }: { size: number }) {
+/** Frame the whole region from above its highest terrain, looking at its mid height
+ *  (terrain heights are relative to the region centre, so the centre alone says little). */
+function FrameCamera({ size, t }: { size: number; t: TerrainPatch }) {
   const { camera, invalidate } = useThree();
+  const { top, mid } = useMemo(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const h of t.heights) {
+      if (h < lo) lo = h;
+      if (h > hi) hi = h;
+    }
+    return { top: (hi * V_EXAG) / 1000, mid: ((lo + hi) / 2) * (V_EXAG / 1000) };
+  }, [t]);
   useEffect(() => {
-    camera.position.set(size * 0.12, size * 0.78, size * 0.62);
-    camera.lookAt(0, 0, 0);
+    camera.position.set(size * 0.12, top + size * 0.7, size * 0.62);
+    camera.lookAt(0, mid, 0);
     invalidate();
-  }, [camera, size, invalidate]);
+  }, [camera, size, top, mid, invalidate]);
   return null;
 }
 
@@ -199,7 +210,7 @@ function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMa
     <>
       <color attach="background" args={["#010208"]} />
       <Stars radius={size * 6} depth={size * 3} count={3000} factor={3} fade />
-      <FrameCamera size={size} />
+      <FrameCamera size={size} t={t} />
       <directionalLight
         position={sunDir.clone().multiplyScalar(size * 2)}
         intensity={real ? (el > -1 ? 3.2 : 0.5) : 2.2}
@@ -243,15 +254,15 @@ function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMa
       {!region?.available && <Pin pos={[0, y0, 0]} color={VERDICT[ev.verdict].color} label="CENTRE" sub={`${Math.round(ev.overall)}`} big />}
 
       {/* north arrow and Earth / Sun directions */}
-      <Html position={[0, y0, -size / 2 - size * 0.03]} center>
+      <Html position={[0, y0, -size / 2 - size * 0.03]} center zIndexRange={[10, 0]}>
         <div className="text-xs font-bold tracking-widest text-white/70">N</div>
       </Html>
-      <Html position={earthDir.clone().multiplyScalar(size * 0.6).add(new THREE.Vector3(0, y0, 0))} center>
+      <Html position={earthDir.clone().multiplyScalar(size * 0.6).add(new THREE.Vector3(0, y0, 0))} center zIndexRange={[10, 0]}>
         <div className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] ${eEl > 0 ? "bg-sky-500/20 text-sky-200" : "bg-white/5 text-white/40"}`}>
           ◉ Earth {eEl.toFixed(0)}°
         </div>
       </Html>
-      <Html position={sunDir.clone().multiplyScalar(size * 0.6).add(new THREE.Vector3(0, y0, 0))} center>
+      <Html position={sunDir.clone().multiplyScalar(size * 0.6).add(new THREE.Vector3(0, y0, 0))} center zIndexRange={[10, 0]}>
         <div className="whitespace-nowrap rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] text-amber-200">☀ Sun {el.toFixed(1)}°</div>
       </Html>
 

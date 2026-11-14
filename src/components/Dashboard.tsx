@@ -4,11 +4,12 @@ import { X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useStore } from "@/lib/store";
+import { useRegion, useRegionLoading, useSelected, useStore } from "@/lib/store";
 import type { Health } from "@/lib/types";
 import AIPlanner from "./ai/AIPlanner";
 import { SEQ_GRADIENT } from "./ai/palette";
 import ModelCardModal from "./ai/ModelCardModal";
+import CandidateAssessment from "./ai/CandidateAssessment";
 import CandidateRail from "./CandidateRail";
 import MapHud from "./map/MapHud";
 import TimeScrubber from "./map/TimeScrubber";
@@ -25,7 +26,7 @@ function StatusLine({ health, error }: { health: Health | null; error: string | 
   const card = useStore((s) => s.modelCard);
   const setShowModelCard = useStore((s) => s.setShowModelCard);
   return (
-    <div className="pointer-events-none absolute bottom-[86px] left-3 flex flex-wrap gap-2 text-[10px] text-white/45">
+    <div className="pointer-events-none absolute bottom-[104px] left-3 flex flex-wrap gap-2 text-[10px] text-white/45">
       {error ? (
         <span className="rounded bg-red-500/20 px-2 py-1 text-red-200">Backend offline: {error}</span>
       ) : health ? (
@@ -50,6 +51,9 @@ function SiteHint() {
   const view = useStore((s) => s.view);
   const status = useStore((s) => s.siteStatus);
   const aiMapStatus = useStore((s) => s.aiMapStatus);
+  const site = useSelected();
+  const region = useRegion(site?.id);
+  const loading = useRegionLoading(site?.id);
   if (view !== "site") return null;
   return (
     <>
@@ -58,17 +62,20 @@ function SiteHint() {
         <div className="rounded-lg bg-black/50 px-4 py-2 text-sm text-white/70">{status}</div>
       </div>
     )}
-    <div className="pointer-events-none absolute left-3 top-3 max-w-xs rounded-lg border border-white/10 bg-slate-950/85 p-3 text-[11px] leading-relaxed text-white/60">
+    <div className="pointer-events-none absolute left-3 top-3 z-20 max-w-xs rounded-lg border border-white/10 bg-slate-950/85 p-3 text-[11px] leading-relaxed text-white/60">
       <div className="mb-1 font-semibold text-white/85">Site close-up</div>
+      {site && <CandidateAssessment region={region} loading={loading} compact />}
+      <div className="mt-3">
       Real LOLA terrain, height ×2.{" "}
       {aiMapStatus === "ready" ? (
         <>
-          Colour = <b className="text-sky-200">AI landing success</b> at the touchdown time:
+          Colour = predicted landing success, including light, power and Earth contact:
           <div className="mt-1.5 flex items-center gap-1.5">
             <span>0%</span>
             <span className="h-2 w-24 rounded" style={{ background: SEQ_GRADIENT }} />
             <span>100%</span>
           </div>
+          <div className="mt-1 text-[10px] text-white/50">Dark = low success · light blue = high success</div>
         </>
       ) : (
         <>
@@ -79,9 +86,9 @@ function SiteHint() {
           </div>
         </>
       )}
+      </div>
       <div className="mt-1.5">
-        Dashed square: the candidate region · <span className="text-cyan-300">Z1</span>: primary landing zone with the landing ellipse · white Z2…: backup zones and
-        divert paths. Shadows follow the real Sun.
+        Dashed outline: candidate region. {region?.available && region.zones.length === 0 ? "No landing zone fits the ellipse." : "Z1, Z2… mark individual zones; their scores apply only there."}
       </div>
     </div>
     </>

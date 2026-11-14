@@ -7,7 +7,7 @@ import { fmtLat, fmtLon } from "@/lib/geo";
 import { useEval, useRegion, useRegionLoading, useSelected, useStore } from "@/lib/store";
 import type { Evaluation, Factor, Timeline } from "@/lib/types";
 import { fmtTime, scoreColor } from "@/lib/ui";
-import { VerdictChip } from "./Chip";
+import CandidateAssessment from "./ai/CandidateAssessment";
 import AIVerdict from "./ai/AIVerdict";
 import RegionVerdict from "./ai/RegionVerdict";
 import Source from "./ai/Source";
@@ -128,35 +128,10 @@ function WindowsTab({ tl, landingTime }: { tl?: Timeline; landingTime: string })
   );
 }
 
-function HeaderMetrics({ siteId, ev, loading }: { siteId: string; ev?: Evaluation; loading: boolean }) {
+function HeaderMetrics({ siteId }: { siteId: string }) {
   const region = useRegion(siteId);
-  const aiLoading = useRegionLoading(siteId);
-  const p = region?.available ? region.stats.best_success : null;
-  return (
-    <div className="mt-3 grid grid-cols-2 gap-2">
-      <div className="rounded-lg bg-sky-400/[0.07] p-2.5 ring-1 ring-sky-300/20">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/50">
-          Best spot · viable area <Source kind="ai" />
-        </div>
-        <div className="mt-0.5 flex items-baseline gap-1 text-[26px] font-semibold leading-none tabular-nums text-white">
-          {p !== null ? Math.round(p * 100) : aiLoading ? <Loader2 size={18} className="animate-spin text-white/40" /> : "—"}
-          {p !== null && <span className="text-sm text-white/55">%</span>}
-          {region?.available && <span className="ml-1.5 text-[13px] font-medium text-white/70">· {region.stats.viable_km2} km²</span>}
-        </div>
-      </div>
-      <div className="rounded-lg bg-white/[0.03] p-2.5 ring-1 ring-white/10">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/50">
-          Rule check <Source kind="computed" />
-        </div>
-        <div className="mt-0.5 flex items-center gap-2">
-          <span className="text-[26px] font-semibold leading-none tabular-nums" style={{ color: ev ? scoreColor(ev.overall) : undefined }}>
-            {ev ? Math.round(ev.overall) : loading ? <Loader2 size={18} className="animate-spin text-white/40" /> : "—"}
-          </span>
-          {ev && <VerdictChip v={ev.verdict} />}
-        </div>
-      </div>
-    </div>
-  );
+  const loading = useRegionLoading(siteId);
+  return <CandidateAssessment region={region} loading={loading} />;
 }
 
 export default function SitePanel() {
@@ -199,7 +174,7 @@ export default function SitePanel() {
         <div className="text-[11px] tabular-nums text-white/45">
           {fmtLat(site.lat)} · {fmtLon(site.lon)} · touchdown {fmtTime(landingTime)}
         </div>
-        <HeaderMetrics siteId={site.id} ev={ev} loading={loading} />
+        <HeaderMetrics siteId={site.id} />
         {err && !ev && <div className="mt-2 text-xs text-red-300">Backend error: {err.slice(0, 140)}</div>}
         <div className="mt-2.5 grid grid-cols-3 gap-1.5">
           <button
@@ -229,8 +204,8 @@ export default function SitePanel() {
         {(
           [
             ["region", "Region"],
-            ["ai", "Spot AI"],
-            ["score", "Rules"],
+            ["ai", "Centre AI"],
+            ["score", "Centre rules"],
             ["windows", "Sun & Earth"],
           ] as [Tab, string][]
         ).map(([k, l]) => (
@@ -245,13 +220,17 @@ export default function SitePanel() {
         ) : tab === "ai" ? (
           <AIVerdict site={site} />
         ) : tab === "windows" ? (
-          <WindowsTab tl={tl} landingTime={landingTime} />
+          <><CentreNote /><WindowsTab tl={tl} landingTime={landingTime} /></>
         ) : !ev ? (
           <div className="text-sm text-white/40">{loading ? "Evaluating…" : ""}</div>
         ) : (
-          <ScoreTab ev={ev} />
+          <><CentreNote /><div className="mb-2 text-sm font-semibold" style={{ color: scoreColor(ev.overall) }}>Centre rule score: {Math.round(ev.overall)}/100 · {ev.verdict.toUpperCase()}</div><ScoreTab ev={ev} /></>
         )}
       </div>
     </aside>
   );
+}
+
+function CentreNote() {
+  return <p className="mb-3 rounded-md bg-white/5 p-2.5 text-[11px] leading-relaxed text-white/60">These checks apply to the region centre. Landing zones elsewhere in the region can have different conditions.</p>;
 }

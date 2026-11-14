@@ -31,9 +31,11 @@ export default function MapHud() {
   const btn = "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10 hover:text-white";
   return (
     <>
-      <div className="pointer-events-none absolute left-3 top-3 w-[290px] rounded-xl border border-white/10 bg-slate-950/85 p-3 shadow-xl">
+      <div className="pointer-events-none absolute left-3 top-3 z-40 w-[290px] rounded-xl border border-white/10 bg-slate-950/85 p-3 shadow-xl">
         <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/45">Touchdown</div>
-        <div className="text-[15px] font-semibold tabular-nums text-white">{fmtTime(landingTime)}</div>
+        <div className="text-[15px] font-semibold tabular-nums text-white" suppressHydrationWarning>
+          {fmtTime(landingTime)}
+        </div>
         {sun && (
           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
             <span className="text-white/45">At the south pole:</span>
@@ -52,6 +54,17 @@ export default function MapHud() {
             <span className="h-2 flex-1 rounded-sm" style={{ background: SEQ_GRADIENT }} />
             <span>100% landable</span>
           </div>
+          <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-white/60">
+            <span className="flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm border-2 border-slate-200" /> Viable
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm border-2 border-amber-400" /> Limited
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm border-2 border-dashed border-red-400" /> Poor
+            </span>
+          </div>
           {showAiMap && <div className="mt-1.5 text-[10.5px] leading-snug text-white/45">The glow on the terrain shows the same AI map in finer detail.</div>}
           <div className="mt-2 flex items-center gap-3 text-[10.5px] text-white/55">
             <span className="flex items-center gap-1">
@@ -64,7 +77,7 @@ export default function MapHud() {
         </div>
       </div>
 
-      <div className="absolute right-3 top-3 flex flex-col items-end gap-1.5">
+      <div className="absolute right-3 top-3 z-40 flex flex-col items-end gap-1.5">
         <div className="flex rounded-lg border border-white/10 bg-slate-950/85 p-0.5 shadow-xl">
           <button className={btn} onClick={() => setPreset("moon")} title="See the whole Moon">
             <Moon size={13} /> Whole Moon

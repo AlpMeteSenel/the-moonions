@@ -8,7 +8,8 @@ import { latLonToVec3, offsetLatLon } from "@/lib/geo";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
 import { halfSizeOf, hourOf, regionKey, useStore } from "@/lib/store";
-import type { LandingZone, RegionSummary, Site } from "@/lib/types";
+import type { LandingZone, RegionAnalysis, RegionSummary, Site } from "@/lib/types";
+import { LIMITED_VIABLE_SHARE, MIN_VIABLE_SHARE, regionAssessment, sharePercent } from "@/lib/regionAssessment";
 import { seqColor } from "../ai/palette";
 
 // Overlays sit just above the rendered terrain (sphere units; 0.0003 ≈ 0.5 km at 2x relief)
@@ -66,27 +67,50 @@ const LIMIT_TEXT: Record<string, string> = {
   sunlight: "in shadow",
   power: "too little sun for power",
   earth_link: "no Earth link",
-  terrain: "terrain too steep",
+  terrain: "terrain constraints",
 };
 
-function summaryText(s?: RegionSummary) {
-  if (!s) return { text: "assessing…", tone: "text-white/50" };
-  if (!s.available) return { text: "outside AI coverage", tone: "text-white/40" };
-  if ((s.viable_km2 ?? 0) <= 0) return { text: `No safe landing now · ${LIMIT_TEXT[s.limiting ?? "terrain"]}`, tone: "text-amber-200/80" };
-  const km2 = s.viable_km2! >= 10 ? Math.round(s.viable_km2!) : s.viable_km2;
-  return { text: `${Math.round((s.viable_share ?? 0) * 100)}% landable · ${km2} km²`, tone: "text-sky-200" };
+type Look = { verdict: "go" | "caution" | "no-go" | null; short: string; detail: string };
+
+/** Map label + verdict. Uses the full region analysis when loaded, else the fast 1.5 km summary. */
+function regionLook(summary: RegionSummary | undefined, detail: RegionAnalysis | undefined): Look {
+  if (detail?.available) {
+    const a = regionAssessment(detail);
+    const share = detail.stats.viable_share;
+    const km2 = detail.stats.viable_km2 >= 10 ? Math.round(detail.stats.viable_km2) : detail.stats.viable_km2;
+    if (a.verdict === "no-go") return { verdict: a.verdict, short: a.short, detail: detail.stats.viable_km2 > 0 ? `only ${sharePercent(share)} viable` : "no viable area" };
+    return { verdict: a.verdict, short: a.short, detail: `${sharePercent(share)} · ${km2} km²` };
+  }
+  if (!summary) return { verdict: null, short: "Assessing", detail: "…" };
+  if (!summary.available) return { verdict: null, short: "No AI data", detail: "outside coverage" };
+  const share = summary.viable_share ?? 0;
+  const km2 = (summary.viable_km2 ?? 0) >= 10 ? Math.round(summary.viable_km2!) : summary.viable_km2;
+  if (share <= MIN_VIABLE_SHARE) return { verdict: "no-go", short: "Poor", detail: (summary.viable_km2 ?? 0) > 0 ? `only ${sharePercent(share)} viable` : LIMIT_TEXT[summary.limiting ?? "terrain"] };
+  if (share < LIMITED_VIABLE_SHARE) return { verdict: "caution", short: "Limited", detail: `${sharePercent(share)} · ${km2} km²` };
+  return { verdict: "go", short: "Viable", detail: `${sharePercent(share)} · ${km2} km²` };
 }
+
+const OUTLINE: Record<string, string> = { go: "#e2e8f0", caution: "#fbbf24", "no-go": "#f87171" };
+const LABEL_TONE: Record<string, string> = { go: "text-sky-200", caution: "text-amber-200", "no-go": "text-red-300" };
 
 const RegionFootprint = memo(function RegionFootprint({ S, site, summary, selected, labelSlot }: { S: Surface; site: Site; summary?: RegionSummary; selected: boolean; labelSlot: boolean }) {
   const select = useStore((s) => s.select);
   const [hover, setHover] = useState(false);
   const half = halfSizeOf(site);
+  const detail = useStore((s) => s.regions[regionKey(site.id, s.landingTime, half)]);
+  const look = regionLook(summary, detail);
   const geom = useMemo(() => footprintGeometry(S, site.lat, site.lon, half), [S, site.lat, site.lon, half]);
   const outline = useMemo(() => outlinePoints(S, site.lat, site.lon, half), [S, site.lat, site.lon, half]);
-  const centre = useMemo(() => onSurface(S, site.lat, site.lon, 0.0004), [S, site.lat, site.lon]);
-  const share = summary?.available ? (summary.viable_share ?? 0) : 0;
-  const fill = summary?.available ? seqColor(0.15 + share * 0.85) : "#475569";
-  const st = summaryText(summary);
+  // label sits just above the region's north edge, so it never covers the landing zones inside
+  const anchor = useMemo(() => {
+    const ll = offsetLatLon(site.lat, site.lon, 0, half);
+    return onSurface(S, ll.lat, ll.lon, 0.0004);
+  }, [S, site.lat, site.lon, half]);
+  const share = detail?.available ? detail.stats.viable_share : summary?.available ? (summary.viable_share ?? 0) : 0;
+  const poor = look.verdict === "no-go";
+  const fill = look.verdict === null ? "#475569" : poor ? "#64748b" : seqColor(0.2 + share * 0.8);
+  const fillOpacity = poor ? 0.16 : selected ? 0.6 : hover ? 0.52 : 0.3 + share * 0.3;
+  const lineColor = selected ? "#22d3ee" : hover ? "#ffffff" : look.verdict ? OUTLINE[look.verdict] : "#94a3b8";
   const showLabel = selected || hover || labelSlot;
   return (
     <group>
@@ -110,7 +134,7 @@ const RegionFootprint = memo(function RegionFootprint({ S, site, summary, select
         <meshBasicMaterial
           color={fill}
           transparent
-          opacity={selected ? 0.62 : hover ? 0.55 : 0.32 + share * 0.3}
+          opacity={fillOpacity}
           depthWrite={false}
           polygonOffset
           polygonOffsetFactor={-4}
@@ -119,12 +143,26 @@ const RegionFootprint = memo(function RegionFootprint({ S, site, summary, select
           toneMapped={false}
         />
       </mesh>
-      <Line points={outline} color={selected ? "#22d3ee" : hover ? "#ffffff" : "#cbd5e1"} lineWidth={selected ? 2.6 : hover ? 2 : 1.2} transparent opacity={selected ? 1 : 0.8} renderOrder={4} />
+      <Line
+        points={outline}
+        color={lineColor}
+        lineWidth={selected ? 2.6 : hover ? 2 : 1.4}
+        dashed={poor && !selected}
+        dashSize={0.0015}
+        gapSize={0.001}
+        transparent
+        opacity={selected ? 1 : 0.85}
+        renderOrder={4}
+      />
       {showLabel && (
-        <Html position={centre} center style={{ pointerEvents: "none" }} zIndexRange={[30, 0]}>
-          <div className={`-translate-y-7 whitespace-nowrap rounded-md border px-2 py-1 text-center shadow-lg ${selected ? "border-cyan-300/60 bg-slate-950/95" : "border-white/10 bg-slate-950/90"}`}>
+        <Html position={anchor} center style={{ pointerEvents: "none" }} zIndexRange={[20, 0]}>
+          <div className={`-translate-y-5 whitespace-nowrap rounded-md border px-2 py-1 shadow-lg ${selected ? "border-cyan-300/60 bg-slate-950/95" : "border-white/10 bg-slate-950/90"}`}>
             <div className={`text-[11px] font-semibold leading-tight ${selected ? "text-cyan-100" : "text-white"}`}>{site.name}</div>
-            <div className={`text-[10px] font-medium leading-tight tabular-nums ${st.tone}`}>{st.text}</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium leading-tight tabular-nums">
+              {look.verdict && <span className="h-1.5 w-1.5 rounded-full" style={{ background: OUTLINE[look.verdict] }} />}
+              <span className={look.verdict ? LABEL_TONE[look.verdict] : "text-white/45"}>{look.short}</span>
+              <span className="text-white/55">{look.detail}</span>
+            </div>
           </div>
         </Html>
       )}
@@ -150,9 +188,9 @@ function ZoneDot({ S, z, primary }: { S: Surface; z: LandingZone; primary: boole
         <meshBasicMaterial color={color} toneMapped={false} />
       </mesh>
       {near && (
-        <Html center style={{ pointerEvents: "none" }} zIndexRange={[40, 0]}>
+        <Html center style={{ pointerEvents: "none" }} zIndexRange={[25, 0]}>
           <div className="-translate-y-4 whitespace-nowrap rounded px-1.5 py-px text-[10.5px] font-bold" style={{ background: color, color: "#020617" }}>
-            {z.id} {Math.round(z.mean_success * 100)}%
+            {z.id} · {Math.round(z.mean_success * 100)}% here
           </div>
         </Html>
       )}

@@ -6,6 +6,7 @@ import { fmtDist } from "@/lib/geo";
 import { halfSizeOf, useRegion, useRegionLoading, useRegionTimeline, useStore } from "@/lib/store";
 import type { LandingZone, RegionTimeline, Site } from "@/lib/types";
 import { fmtTime } from "@/lib/ui";
+import { MIN_VIABLE_SHARE, REGION_CONSTRAINTS, regionAssessment, sharePercent } from "@/lib/regionAssessment";
 import { pct, seqColor } from "./palette";
 import Source from "./Source";
 
@@ -22,19 +23,20 @@ function Title({ children, source }: { children: React.ReactNode; source?: React
 }
 
 function Share({ label, value, source }: { label: string; value: number; source: "ai" | "computed" }) {
+  const limited = value <= MIN_VIABLE_SHARE;
   return (
     <div className="flex items-center gap-2.5 py-0.5">
       <span className="w-36 shrink-0 text-[12px] text-white/75">{label}</span>
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(1.5, value * 100)}%`, background: seqColor(0.35 + value * 0.65) }} />
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${value * 100}%`, background: limited ? "#f87171" : value < 0.5 ? "#fbbf24" : seqColor(0.35 + value * 0.65) }} />
       </div>
-      <span className="w-10 text-right text-[12px] font-semibold tabular-nums text-white/90">{pct(value)}</span>
+      <span className={`w-12 text-right text-[12px] font-semibold tabular-nums ${limited ? "text-red-300" : "text-white/90"}`}>{sharePercent(value)}</span>
       <Source kind={source} />
     </div>
   );
 }
 
-function ZoneRow({ z, active, onClick }: { z: LandingZone; active: boolean; onClick: () => void }) {
+function ZoneRow({ z, active, onClick, limited }: { z: LandingZone; active: boolean; onClick: () => void; limited: boolean }) {
   const primary = z.rank === 1;
   return (
     <button onClick={onClick} className={`w-full rounded-lg border p-2.5 text-left transition ${active ? "border-white/30 bg-white/[0.07]" : "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05]"}`}>
@@ -43,10 +45,9 @@ function ZoneRow({ z, active, onClick }: { z: LandingZone; active: boolean; onCl
           {z.id}
         </span>
         <div className="flex-1 text-[12px] text-white">
-          {primary ? "Primary landing zone" : `${fmtDist(z.from_primary?.distance_m ?? 0)} ${z.from_primary?.direction ?? ""} of Z1`}
-          {!z.fits_ellipse && <span className="ml-1.5 text-[10px] text-amber-300">tight fit</span>}
+          {!z.fits_ellipse ? "Patch too small for ellipse" : primary ? limited ? "Potential target zone" : "Primary landing zone" : `${fmtDist(z.from_primary?.distance_m ?? 0)} ${z.from_primary?.direction ?? ""} of Z1`}
         </div>
-        <span className="text-sm font-semibold tabular-nums text-white">{pct(z.mean_success)}</span>
+        <span className="text-right text-sm font-semibold tabular-nums text-white">{pct(z.mean_success)}<span className="block text-[9px] font-normal text-white/45">in this zone</span></span>
       </div>
       <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px] text-white/50">
         <div>
@@ -54,7 +55,7 @@ function ZoneRow({ z, active, onClick }: { z: LandingZone; active: boolean; onCl
           <div className="font-medium text-white/80">{z.area_km2} km²</div>
         </div>
         <div>
-          <div className="text-white/35">Room around ellipse</div>
+          <div className="text-white/35">Clearance to boundary</div>
           <div className="font-medium text-white/80">{Math.round(z.margin_m)} m</div>
         </div>
         <div>
@@ -130,7 +131,7 @@ function Windows({ tl, landingTime, onPick }: { tl?: RegionTimeline; landingTime
             >
               <span className="text-[10px] font-bold text-white/40">{i === 0 ? "★" : i + 1}</span>
               <span className="text-white/85">{fmtTime(w.best)}</span>
-              <span className="text-[10px] text-white/40">open {Math.round(w.hours_open)} h</span>
+              <span className="text-[10px] text-white/40">{Math.round(w.hours_open)} h window</span>
               <span className="w-10 text-right font-semibold tabular-nums text-white">{pct(w.best_success)}</span>
             </button>
           );
@@ -153,6 +154,8 @@ export default function RegionVerdict({ site }: { site: Site }) {
   const setView = useStore((s) => s.setView);
   const setRegionSize = useStore((s) => s.setRegionSize);
   const half = halfSizeOf(site);
+  const assessment = r?.available ? regionAssessment(r) : null;
+  const nextWindow = tl?.available ? tl.windows.find((w) => new Date(w.end).getTime() > new Date(landingTime).getTime()) : undefined;
 
   return (
     <div>
@@ -180,41 +183,29 @@ export default function RegionVerdict({ site }: { site: Site }) {
         <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 text-[12px] text-white/60">The AI model isn&apos;t trained yet.</div>
       ) : (
         <>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div>
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+            <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-white/45">
-                Viable landing area <Source kind="ai" />
+                Best sampled spot <Source kind="ai" />
               </div>
-              <div className="mt-0.5 text-[32px] font-semibold leading-none tabular-nums text-white">
-                {r.stats.viable_km2}
-                <span className="ml-1 text-sm text-white/55">km²</span>
-              </div>
-              <div className="mt-1 text-[11px] text-white/50">{pct(r.stats.viable_share)} of the region at this time</div>
+              <div className="text-[10.5px] text-white/45">One location only, not a score for the region</div>
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-white/45">
-                Best landing spot <Source kind="ai" />
-              </div>
-              <div className="mt-0.5 text-[32px] font-semibold leading-none tabular-nums text-white">
-                {Math.round(r.stats.best_success * 100)}
-                <span className="text-sm text-white/55">%</span>
-              </div>
-              <div className="mt-1 text-[11px] text-white/50">
-                {r.stats.zones} landing zone{r.stats.zones === 1 ? "" : "s"} fit the ±{Math.round(r.ellipse_radius_m)} m ellipse
-              </div>
+            <div className="text-[20px] font-semibold tabular-nums text-white/80">
+              {Math.round(r.stats.best_success * 100)}
+              <span className="text-xs text-white/50">%</span>
             </div>
           </div>
+          {assessment?.verdict === "no-go" && r.stats.best_success >= 0.8 && <p className="mt-2 text-[11px] leading-relaxed text-white/60">A high score at one spot does not make the region suitable. A landing needs enough viable area to contain the full ±{Math.round(r.ellipse_radius_m)} m ellipse.</p>}
 
-          <Title>Across the region</Title>
-          <Share label="Safe ground" value={r.stats.safe_ground_share} source="ai" />
-          <Share label="Sunlit at touchdown" value={r.stats.lit_share} source="computed" />
-          <Share label="Power through the stay" value={r.stats.power_share} source="computed" />
-          <Share label="Earth link" value={r.stats.comms_share} source="computed" />
+          <Title>What limits this region</Title>
+          <p className="mb-2 text-[10.5px] leading-snug text-white/50">Share of the region meeting each requirement. All four must hold in the same landing zone.</p>
+          {REGION_CONSTRAINTS.map((c) => <Share key={c.key} label={c.label} value={r.stats[c.key]} source={c.source} />)}
+          {assessment?.verdict === "no-go" && <p className="mt-2 text-[10.5px] leading-snug text-red-200/80">{r.stats.viable_share <= MIN_VIABLE_SHARE ? "At or below the 2% viable-area threshold used to identify landing windows." : "No full landing ellipse fits the viable patches."}</p>}
 
           <Title source="ai">Landing zones</Title>
           {r.zones.length === 0 ? (
             <div className="rounded-md border border-red-400/40 bg-red-400/10 p-2.5 text-[11.5px] text-red-200">
-              No zone is large enough for the landing ellipse at this time. Try one of the region&apos;s landing windows below.
+              No zone fits the full ±{Math.round(r.ellipse_radius_m)} m landing ellipse at this time.
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -223,6 +214,7 @@ export default function RegionVerdict({ site }: { site: Site }) {
                   key={z.id}
                   z={z}
                   active={focusZone === z.id}
+                  limited={assessment?.verdict === "no-go"}
                   onClick={() => {
                     setFocusZone(focusZone === z.id ? null : z.id);
                     setView("site");
@@ -230,7 +222,7 @@ export default function RegionVerdict({ site }: { site: Site }) {
                 />
               ))}
               <div className="text-[10.5px] leading-snug text-white/40">
-                Z1 is the planned target. If it turns out blocked during descent, the lander retargets to the nearest backup zone it can still reach.
+                {assessment?.verdict === "no-go" ? "These patches do not make the region a recommended candidate at this time." : r.zones.length === 1 ? "Z1 is one continuous viable area. Alternate targets within it have not been assessed individually." : "Z1 is the primary target. Other zones are potential backups within this region."}
               </div>
             </div>
           )}
@@ -238,6 +230,8 @@ export default function RegionVerdict({ site }: { site: Site }) {
       )}
 
       <Title source="ai">Landing windows</Title>
+      {nextWindow && assessment?.verdict === "no-go" && <button onClick={() => setLandingTime(nextWindow.best)} className="mb-3 w-full rounded-md border border-sky-400/30 bg-sky-400/10 p-2 text-left text-[11px] text-sky-200 hover:bg-sky-400/20">Try next landing window · {fmtTime(nextWindow.best)} →</button>}
+      {assessment?.verdict === "no-go" && <button onClick={() => useStore.getState().setPanel("planner")} className="mb-3 w-full rounded-md bg-white/[0.06] px-3 py-2 text-left text-[11px] font-medium text-white/85 hover:bg-white/10">Compare other regions in the mission planner →</button>}
       <Windows tl={tl} landingTime={landingTime} onPick={setLandingTime} />
     </div>
   );

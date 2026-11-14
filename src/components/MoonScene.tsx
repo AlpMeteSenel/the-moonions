@@ -1,8 +1,8 @@
 "use client";
 
 import { AdaptiveDpr, useProgress } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
-import { Suspense } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { Suspense, useEffect } from "react";
 import * as THREE from "three";
 import { useStore } from "@/lib/store";
 import Globe from "./Globe";
@@ -16,6 +16,22 @@ function Loading() {
       <div className="rounded-lg bg-black/50 px-4 py-2 text-sm text-white/70">Loading NASA lunar maps… {Math.round(progress)}%</div>
     </div>
   );
+}
+
+/**
+ * With on-demand rendering, a resolution change from AdaptiveDpr resizes (and clears) the canvas
+ * without scheduling a frame, which can leave the view blank after the camera stops. Redraw on change.
+ */
+function RedrawOnResolutionChange() {
+  const level = useThree((s) => s.performance.current);
+  const dpr = useThree((s) => s.viewport.dpr);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    invalidate();
+    const t = setTimeout(() => invalidate(), 50);
+    return () => clearTimeout(t);
+  }, [level, dpr, invalidate]);
+  return null;
 }
 
 export default function MoonScene() {
@@ -33,6 +49,7 @@ export default function MoonScene() {
     >
       {/* render at lower resolution while the camera moves, full resolution when it stops */}
       <AdaptiveDpr pixelated={false} />
+      <RedrawOnResolutionChange />
       <Suspense fallback={null}>{view === "globe" ? <Globe /> : <SiteView />}</Suspense>
     </Canvas>
     <Loading />
