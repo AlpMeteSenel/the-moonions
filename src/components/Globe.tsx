@@ -7,16 +7,12 @@ import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
 import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
 import { latLonToVec3, vec3ToLatLon } from "@/lib/geo";
+import { DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION } from "@/lib/heights";
+import { MOON_Q, toLocal, toWorld } from "@/lib/moonFrame";
 import { evalKey, useStore } from "@/lib/store";
 import { VERDICT } from "@/lib/ui";
 import RegionLayer from "./map/RegionLayer";
 import PolarCap, { CAP_EDGE_LAT, type CapMeta } from "./PolarCap";
-
-const MOON_R_KM = 1737.4;
-const RELIEF_EXAGGERATION = 2.0;
-// height map range from textures.json (LOLA, metres)
-const H_MIN = -8981.5;
-const H_MAX = 10685.5;
 
 export interface TextureMeta {
   caps?: Record<string, CapMeta>;
@@ -71,20 +67,20 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
 
   useMemo(() => {
     color.colorSpace = THREE.SRGBColorSpace;
-    color.anisotropy = 8;
+    color.anisotropy = 4;
     for (const t of [color, normal, height, hazard]) t.wrapS = THREE.RepeatWrapping;
   }, [color, normal, height, hazard]);
 
   const normalScale = useMemo(() => new THREE.Vector2(1.4, 1.4), []);
-  const dispScale = ((H_MAX - H_MIN) / 1000 / MOON_R_KM) * RELIEF_EXAGGERATION;
-  const dispBias = (H_MIN / 1000 / MOON_R_KM) * RELIEF_EXAGGERATION;
+  const dispScale = DISP_SCALE;
+  const dispBias = DISP_BIAS;
 
   // All pointer interaction goes through this cheap proxy sphere (2k triangles) instead of
   // raycasting the 150k-triangle displaced surface on every mouse move.
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     if (!placing) return;
     e.stopPropagation();
-    const { lat, lon } = vec3ToLatLon(e.point);
+    const { lat, lon } = vec3ToLatLon(toLocal(e.point));
     addCustom(lat, lon);
     setHover(null);
   };
@@ -94,7 +90,8 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   };
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (!placing) return;
-    setHover({ ...vec3ToLatLon(e.point), p: e.point.clone() });
+    const lp = toLocal(e.point);
+    setHover({ ...vec3ToLatLon(lp), p: lp });
   };
 
   return (
@@ -148,7 +145,7 @@ function SunLight() {
   const { camera } = useThree();
   useFrame(() => {
     if (!light.current) return;
-    if (real && sun) light.current.position.copy(latLonToVec3(sun.sun_lat, sun.sun_lon, 10));
+    if (real && sun) light.current.position.copy(toWorld(latLonToVec3(sun.sun_lat, sun.sun_lon, 10)));
     else light.current.position.copy(camera.position).normalize().multiplyScalar(10);
   });
   return (
@@ -185,7 +182,7 @@ function useZoomScale(at: THREE.Vector3, k = 0.9) {
   const { camera } = useThree();
   useFrame(() => {
     if (!ref.current) return;
-    const d = camera.position.distanceTo(at);
+    const d = camera.position.distanceTo(toWorld(at));
     ref.current.scale.setScalar(Math.min(1.6, Math.max(0.003, d * k)));
   });
   return ref;
@@ -279,22 +276,22 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   useEffect(() => {
     if (framed.current || selected || !sun) return;
     framed.current = true;
-    target.current = latLonToVec3(-87.5, sun.sun_lon - 15, 1.45);
+    target.current = toWorld(latLonToVec3(-89.0, sun.sun_lon - 15, 1.45));
     invalidate();
   }, [sun, selected, invalidate]);
 
   useEffect(() => {
     if (preset.nonce === 0) return;
     const lon = sun?.sun_lon ?? 0;
-    if (preset.kind === "moon") target.current = latLonToVec3(-30, lon - 25, 3.2);
-    else if (preset.kind === "pole") target.current = latLonToVec3(-87.5, lon - 15, 1.45);
-    else if (selected) target.current = latLonToVec3(selected.lat, selected.lon, 1.09);
+    if (preset.kind === "moon") target.current = toWorld(latLonToVec3(-30, lon - 25, 3.2));
+    else if (preset.kind === "pole") target.current = toWorld(latLonToVec3(-89.0, lon - 15, 1.45));
+    else if (selected) target.current = toWorld(latLonToVec3(selected.lat, selected.lon, 1.09));
     invalidate();
   }, [preset, sun, selected, invalidate]);
 
   useEffect(() => {
     if (!selected) return;
-    target.current = latLonToVec3(selected.lat, selected.lon, 1.09);
+    target.current = toWorld(latLonToVec3(selected.lat, selected.lon, 1.09));
     invalidate();
   }, [selected, invalidate]);
 
@@ -330,6 +327,7 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
     <OrbitControls
       ref={controls}
       enablePan={false}
+      regress
       enableDamping
       dampingFactor={0.1}
       minDistance={1.03}
@@ -346,10 +344,13 @@ export default function Globe() {
       <color attach="background" args={["#02030a"]} />
       <Stars radius={120} depth={60} count={3000} factor={4} saturation={0} fade speed={0} />
       <SunLight />
-      <Moon onFlyTo={setFlyTo} />
-      <Earth />
-      <RegionLayer />
-      <SiteMarkers />
+      {/* the Moon is drawn rotated so the south pole faces the camera (see lib/moonFrame.ts) */}
+      <group quaternion={MOON_Q}>
+        <Moon onFlyTo={setFlyTo} />
+        <Earth />
+        <RegionLayer />
+        <SiteMarkers />
+      </group>
       <CameraRig flyTo={flyTo} />
     </>
   );

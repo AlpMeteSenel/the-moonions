@@ -77,14 +77,14 @@ export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pol
   const px = useHeightPixels(texture(`cap_${pole}_height.png`));
   useMemo(() => {
     color.colorSpace = THREE.SRGBColorSpace;
-    color.anisotropy = 8;
+    color.anisotropy = 4;
   }, [color]);
 
   const geom = useMemo(() => {
     if (!px) return null;
     // Uniform grid in the stereographic plane: evenly sized triangles everywhere, no pole
     // singularity (a ring/fan mesh produces radial "starburst" shading at the pole).
-    const N = 280;
+    const N = 220;
     const sign = pole === "s" ? -1 : 1;
     const half = meta.half_size_m;
     const rhoOf = (absLat: number) => 2 * MOON_R_M * Math.tan(((90 - absLat) * Math.PI) / 360);

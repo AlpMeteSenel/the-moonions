@@ -1,6 +1,6 @@
 "use client";
 
-import { useProgress } from "@react-three/drei";
+import { AdaptiveDpr, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 import * as THREE from "three";
@@ -27,10 +27,12 @@ export default function MoonScene() {
       shadows={view === "site"}
       frameloop="demand"
       dpr={[1, 1.5]}
-      performance={{ min: 0.6 }}
+      performance={{ min: 0.5, debounce: 250 }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
       camera={view === "globe" ? { position: [1.2, -2.2, 2.4], fov: 40, near: 0.001, far: 1000 } : { position: [3.5, 3.2, 5.5], fov: 45, near: 0.01, far: 500 }}
     >
+      {/* render at lower resolution while the camera moves, full resolution when it stops */}
+      <AdaptiveDpr pixelated={false} />
       <Suspense fallback={null}>{view === "globe" ? <Globe /> : <SiteView />}</Suspense>
     </Canvas>
     <Loading />
