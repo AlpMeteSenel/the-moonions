@@ -4,8 +4,8 @@ import { create } from "zustand";
 import { api, type EvalOptions } from "./api";
 import type { AIAssessment, AIPlan, AITimeline, Conditions, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
 
-export type View = "globe" | "site" | "crew";
-export type Panel = "planner" | "compare" | "proposals" | null;
+export type View = "globe" | "site";
+export type Panel = "crew" | "planner" | "compare" | "proposals" | null;
 export type CameraPreset = "moon" | "pole" | "region";
 
 function roundHour(d = new Date()) {

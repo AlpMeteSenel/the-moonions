@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Bot, ClipboardCheck, Columns3, Globe2, Layers, Mountain, Settings2, Sparkles, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Bot, ClipboardCheck, Columns3, Globe2, Layers, Mountain, Settings2, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRegionTimeline, useStore } from "@/lib/store";
 import type { Profile } from "@/lib/types";
@@ -122,10 +122,11 @@ export default function TopBar() {
       </div>
 
       <button
-        onClick={() => setPanel(panel === "planner" ? null : "planner")}
-        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${panel === "planner" ? "bg-sky-300 text-slate-950" : "bg-sky-400 text-slate-950 hover:bg-sky-300"}`}
+        onClick={() => setPanel(panel === "crew" || panel === "planner" ? null : "crew")}
+        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${panel === "crew" || panel === "planner" ? "bg-sky-300 text-slate-950" : "bg-sky-400 text-slate-950 hover:bg-sky-300"}`}
+        title="The agent team decides where and when to land"
       >
-        <Sparkles size={14} /> Plan with AI
+        <Bot size={14} /> Plan with AI agents
       </button>
 
       <div className="ml-auto flex items-center gap-1">
@@ -135,9 +136,6 @@ export default function TopBar() {
           </button>
           <button className={tab(view === "site")} onClick={() => setView("site")} disabled={!selectedId} title="3D close-up of the selected site">
             <Mountain size={14} /> <span className="hidden 2xl:inline">Site 3D</span>
-          </button>
-          <button className={tab(view === "crew")} onClick={() => setView("crew")} title="Mission control: the agent team decides where and when to land">
-            <Bot size={14} /> <span className="hidden 2xl:inline">Mission control</span>
           </button>
         </div>
         <Popover icon={<Layers size={14} />} label="Layers" active={showHazard || !realLighting}>

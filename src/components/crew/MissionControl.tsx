@@ -20,6 +20,7 @@ const DEFAULT_ROSTER: AgentInfo[] = [
 ];
 const VOTE_STYLE: Record<Vote, string> = { GO: "bg-emerald-400 text-emerald-950", CAUTION: "bg-amber-300 text-amber-950", "NO-GO": "bg-red-400 text-red-950" };
 const WALK = 46; // logical px per second
+const CROP = 44; // docked under the map: show the habitat and horizon, not the empty upper sky
 
 type Bubble = { text: string; kind: "say" | "tool" | "think" | "error"; until: number };
 type Sim = {
@@ -45,7 +46,8 @@ export default function MissionControl({ visible }: { visible: boolean }) {
   const missionHours = useStore((s) => s.missionHours);
   const sites = useStore((s) => s.sites);
   const applyPlan = useStore((s) => s.setLandingTimeAndSelect);
-  const setView = useStore((s) => s.setView);
+  const applyRef = useRef(applyPlan);
+  applyRef.current = applyPlan;
 
   const [start, setStart] = useState(() => landingTime.slice(0, 10));
   const [days, setDays] = useState(14);
@@ -131,6 +133,8 @@ export default function MissionControl({ visible }: { visible: boolean }) {
       case "decision": {
         S.chief.bubble = { text: e.decision ? (e.decision.go ? "GO for landing!" : "NO-GO") : "NO-GO", kind: "say", until: hold(5000) };
         setDecision(e.decision ?? null);
+        // show the team's pick on the map above straight away
+        if (e.decision) applyRef.current(e.decision.primary.site_id, e.decision.primary.landing_time);
         const go = !!e.decision?.go;
         IDS.filter((id) => id !== "chief").forEach((id, i) => {
           const side = i < 3 ? -1 : 1;
@@ -183,7 +187,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.max(1, Math.min(el.clientWidth / W, el.clientHeight / H))));
+    const ro = new ResizeObserver(() => setScale(Math.max(1, Math.min(el.clientWidth / W, el.clientHeight / (H - CROP)))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -280,20 +284,16 @@ export default function MissionControl({ visible }: { visible: boolean }) {
   const S = sims.current;
 
   return (
-    <div className="absolute inset-0 z-[45] flex bg-[#03040a]" style={{ display: visible ? "flex" : "none" }}>
+    <div className="h-full min-h-0 bg-[#03040a]" style={{ display: visible ? "flex" : "none" }}>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-2 text-[12px]">
-          <div className="mr-2">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/70">Mission control</div>
-            <div className="text-[11px] text-white/40">Seven agents decide where and when to land, using the real data and models</div>
-          </div>
+        <div className="flex items-center gap-2 whitespace-nowrap border-b border-white/5 px-3 py-1.5 text-[12px]">
           <label className="flex items-center gap-1.5 text-white/55">
             From
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} disabled={running} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white [color-scheme:dark]" />
+            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} disabled={running} className="w-[124px] rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-white [color-scheme:dark]" />
           </label>
           <label className="flex items-center gap-1.5 text-white/55">
             for
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={running} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white">
+            <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={running} className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-white">
               {[7, 14, 21, 28].map((d) => (
                 <option key={d} value={d} className="bg-slate-900">
                   {d} days
@@ -301,7 +301,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
               ))}
             </select>
           </label>
-          <button onClick={start_} disabled={running} className="flex items-center gap-1.5 rounded-md bg-cyan-400 px-3 py-1.5 font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-60">
+          <button onClick={start_} disabled={running} className="flex items-center gap-1.5 rounded-md bg-cyan-400 px-2.5 py-1 font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-60">
             {running ? <Loader2 size={13} className="animate-spin" /> : log.length ? <RotateCcw size={13} /> : <Play size={13} />}
             {running ? "Agents at work…" : log.length ? "Run again" : "Start the team"}
           </button>
@@ -312,23 +312,18 @@ export default function MissionControl({ visible }: { visible: boolean }) {
                 {s}×
               </button>
             ))}
-            <span className="ml-2 flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[11px]">
-              <Sparkles size={12} className="text-pink-300" />
-              {llm === undefined ? "Chief: LLM + rules" : llm ? `Chief reasons with ${llm}` : "Chief: rule-based"}
-            </span>
+
           </div>
         </div>
 
         <div ref={wrap} className="relative min-h-0 flex-1 overflow-hidden">
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sceneW, height: sceneH }}>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden" style={{ width: sceneW, height: (H - CROP) * scale }}>
+          <div className="absolute inset-x-0" style={{ top: -CROP * scale, height: sceneH }}>
             <canvas ref={canvas} width={W} height={H} className="block h-full w-full" style={{ imageRendering: "pixelated" }} />
             {/* name plates on the regolith below each station */}
             {IDS.map((id) => (
-              <div key={id} className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap text-center leading-tight" style={{ left: DESK[id] * scale, top: 172.5 * scale }}>
-                <div className="text-[11px] font-bold" style={{ color: info[id]?.color }}>
-                  {info[id]?.name}
-                </div>
-                <div className="text-[9.5px] text-white/55">{info[id]?.role}</div>
+              <div key={id} title={info[id]?.role} className="absolute -translate-x-1/2 whitespace-nowrap text-center text-[10.5px] font-bold leading-none" style={{ left: DESK[id] * scale, top: 172 * scale, color: info[id]?.color }}>
+                {info[id]?.name}
               </div>
             ))}
             {/* speech bubbles and vote badges */}
@@ -336,7 +331,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
               const a = S[id];
               const lift = (id === "chief" ? 34 : i % 2 ? 30 : 20) * scale;
               return (
-                <div key={id} className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center gap-1" style={{ left: a.x * scale, bottom: (H - FLOOR) * scale + lift }}>
+                <div key={id} className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center gap-1" style={{ left: Math.min(sceneW - 98, Math.max(98, a.x * scale)), bottom: (H - FLOOR) * scale + lift }}>
                   {a.bubble && (
                     <div
                       className={`max-w-[190px] rounded-lg border px-2 py-1 text-[11px] leading-snug shadow-lg ${
@@ -351,7 +346,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
               );
             })}
             {decision && (
-              <div className={`pointer-events-none absolute left-1/2 top-[6%] -translate-x-1/2 rounded-lg border px-4 py-2 text-center shadow-2xl ${decision.go ? "border-emerald-300/60 bg-emerald-950/90" : "border-red-300/60 bg-red-950/90"}`}>
+              <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-lg border px-4 py-2 text-center shadow-2xl ${decision.go ? "border-emerald-300/60 bg-emerald-950/90" : "border-red-300/60 bg-red-950/90"}`} style={{ top: (CROP + 6) * scale }}>
                 <div className={`text-[18px] font-black tracking-wide ${decision.go ? "text-emerald-300" : "text-red-300"}`}>{decision.go ? "GO FOR LANDING" : "NO-GO"}</div>
                 <div className="text-[12px] text-white">
                   {decision.primary.name}
@@ -359,6 +354,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
                 </div>
               </div>
             )}
+          </div>
           </div>
           {!log.length && !running && (
             <div className="absolute inset-x-0 bottom-6 flex justify-center">
@@ -370,9 +366,15 @@ export default function MissionControl({ visible }: { visible: boolean }) {
         </div>
       </div>
 
-      <aside className="flex w-[380px] shrink-0 flex-col border-l border-white/10 bg-slate-950">
+      <aside className="flex w-[340px] shrink-0 flex-col border-l border-white/10 bg-slate-950">
         <div className="border-b border-white/10 p-3">
-          <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/50">Vote board</div>
+          <div className="mb-2 flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/50">
+            Vote board
+            <span className="flex items-center gap-1 rounded-md border border-white/10 px-1.5 py-0.5 text-[10.5px] normal-case tracking-normal text-white/60" title={llm ? `The Flight Director reasons with ${llm}; its pick is checked against the specialists' vetoes` : "Rule-based Flight Director"}>
+              <Sparkles size={12} className="text-pink-300" />
+              {llm ? llm.split("/").pop() : llm === null ? "rules" : "LLM"}
+            </span>
+          </div>
           {options.length ? (
             <table className="w-full text-[11px]">
               <thead>
@@ -445,11 +447,10 @@ export default function MissionControl({ visible }: { visible: boolean }) {
             <button
               onClick={() => {
                 applyPlan(decision.primary.site_id, decision.primary.landing_time);
-                setView("globe");
               }}
               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-white/15"
             >
-              <MapPin size={13} /> Show the plan on the map
+              <MapPin size={13} /> Shown on the map above
             </button>
           </div>
         )}

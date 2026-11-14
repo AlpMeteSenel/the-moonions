@@ -109,23 +109,23 @@ export function drawBackground(ctx: CanvasRenderingContext2D) {
   for (let i = 0; i < 110; i++) {
     const b = rnd();
     ctx.fillStyle = b > 0.85 ? "#ffffff" : b > 0.5 ? "#8b93a7" : "#3d4456";
-    ctx.fillRect(Math.floor(rnd() * W), Math.floor(rnd() * 70), 1, 1);
+    ctx.fillRect(Math.floor(rnd() * W), Math.floor(44 + rnd() * 26), 1, 1);
   }
   // the Sun, low on the horizon as always at the pole
   disk(ctx, 22, 58, 9, "rgba(253,224,71,0.10)");
   disk(ctx, 22, 58, 6, "rgba(253,224,71,0.25)");
   disk(ctx, 22, 58, 4, "#fff7c2");
   // Earth hangs low over the horizon too
-  disk(ctx, 292, 26, 10, "#1d4ed8");
+  disk(ctx, 292, 54, 9, "#1d4ed8");
   ctx.fillStyle = "#22c55e";
-  [[287, 21, 4, 2], [289, 23, 3, 3], [295, 28, 4, 3], [294, 31, 2, 2], [286, 29, 2, 1]].forEach(([x, y, w, h]) => ctx.fillRect(x, y, w, h));
+  [[287, 49, 4, 2], [289, 51, 3, 3], [295, 56, 3, 3], [294, 59, 2, 1], [286, 57, 2, 1]].forEach(([x, y, w, h]) => ctx.fillRect(x, y, w, h));
   ctx.fillStyle = "#e0f2fe";
-  [[290, 17, 4, 1], [297, 22, 3, 1], [284, 26, 2, 1]].forEach(([x, y, w, h]) => ctx.fillRect(x, y, w, h));
+  [[290, 46, 4, 1], [297, 50, 2, 1], [285, 54, 2, 1]].forEach(([x, y, w, h]) => ctx.fillRect(x, y, w, h));
   // night side of Earth (Sun is to the left)
   ctx.fillStyle = "rgba(2,6,23,0.55)";
-  for (let y = -10; y <= 10; y++) {
-    const half = Math.floor(Math.sqrt(100 - y * y));
-    ctx.fillRect(292 + Math.floor(half * 0.25), 26 + y, half - Math.floor(half * 0.25) + 1, 1);
+  for (let y = -9; y <= 9; y++) {
+    const half = Math.floor(Math.sqrt(81 - y * y));
+    ctx.fillRect(292 + Math.floor(half * 0.25), 54 + y, half - Math.floor(half * 0.25) + 1, 1);
   }
   // far crater rims and massifs
   ctx.fillStyle = "#3a3f4b";

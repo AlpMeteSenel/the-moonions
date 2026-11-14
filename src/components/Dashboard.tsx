@@ -100,7 +100,6 @@ export default function Dashboard() {
   const init = useStore((s) => s.init);
   const panel = useStore((s) => s.panel);
   const setPanel = useStore((s) => s.setPanel);
-  const view = useStore((s) => s.view);
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,8 +111,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#02030a] text-white">
       <TopBar />
-      <div className="relative flex min-h-0 flex-1">
-        <MissionControl visible={view === "crew"} />
+      <div className="flex min-h-0 flex-1">
         <CandidateRail />
         <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
@@ -123,19 +121,32 @@ export default function Dashboard() {
             <TimeScrubber />
             <StatusLine health={health} error={error} />
           </div>
-          {panel && (
-            <section className={`${panel === "planner" ? "h-[360px]" : panel === "compare" ? "h-[372px]" : "h-[300px]"} flex shrink-0 flex-col overflow-hidden border-t border-white/10 bg-slate-950`}>
-              <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/60">
-                  {panel === "planner" ? "AI mission planner" : panel === "compare" ? "Compare options: Sun, Earth and the stay" : "Landing proposals"}
+          {/* docked panel under the map; the agent team stays mounted so a run survives closing it */}
+          <section
+            className={`${panel === "crew" ? "h-[400px]" : panel === "planner" ? "h-[360px]" : panel === "compare" ? "h-[372px]" : "h-[300px]"} shrink-0 flex-col overflow-hidden border-t border-white/10 bg-slate-950`}
+            style={{ display: panel ? "flex" : "none" }}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-1.5">
+              {panel === "crew" || panel === "planner" ? (
+                <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.15em]">
+                  {(["crew", "planner"] as const).map((p) => (
+                    <button key={p} onClick={() => panel !== p && setPanel(p)} className={`rounded px-2 py-1 ${panel === p ? "bg-white/10 text-white" : "text-white/45 hover:text-white"}`}>
+                      {p === "crew" ? "AI agent team" : "Region × time heatmap"}
+                    </button>
+                  ))}
                 </div>
-                <button onClick={() => setPanel(panel)} className="text-white/40 hover:text-white">
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">{panel === "planner" ? <AIPlanner /> : panel === "compare" ? <ComparePanel /> : <ProposalsPanel />}</div>
-            </section>
-          )}
+              ) : (
+                <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/60">{panel === "compare" ? "Compare options: Sun, Earth and the stay" : "Landing proposals"}</div>
+              )}
+              <button onClick={() => setPanel(null)} className="text-white/40 hover:text-white" aria-label="Close panel">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1" style={{ display: panel === "crew" ? "block" : "none" }}>
+              <MissionControl visible={panel === "crew"} />
+            </div>
+            {panel && panel !== "crew" && <div className="min-h-0 flex-1 overflow-y-auto">{panel === "planner" ? <AIPlanner /> : panel === "compare" ? <ComparePanel /> : <ProposalsPanel />}</div>}
+          </section>
         </main>
         <SitePanel />
       </div>
