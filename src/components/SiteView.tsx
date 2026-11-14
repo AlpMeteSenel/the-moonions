@@ -106,16 +106,16 @@ function Ring({ radiusM, y, color, dashed = false, opacity = 0.8 }: { radiusM: n
   return <Line points={pts} color={color} lineWidth={1.5} dashed={dashed} dashSize={0.08} gapSize={0.05} transparent opacity={opacity} />;
 }
 
-function Pin({ pos, color, label, sub, big = false, onClick, active }: { pos: [number, number, number]; color: string; label: string; sub?: string; big?: boolean; onClick?: () => void; active?: boolean }) {
-  const h = big ? 0.55 : 0.35;
+function Pin({ pos, color, label, sub, big = false, onClick, active, scale = 1 }: { pos: [number, number, number]; color: string; label: string; sub?: string; big?: boolean; onClick?: () => void; active?: boolean; scale?: number }) {
+  const h = (big ? 0.55 : 0.35) * scale;
   return (
     <group position={pos}>
       <Line points={[new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, h, 0)]} color={color} lineWidth={2} />
       <mesh position={[0, h, 0]} onClick={onClick}>
-        <sphereGeometry args={[big ? 0.06 : 0.04, 20, 20]} />
+        <sphereGeometry args={[(big ? 0.06 : 0.04) * scale, 20, 20]} />
         <meshBasicMaterial color={color} toneMapped={false} />
       </mesh>
-      <Html position={[0, h + 0.08, 0]} center distanceFactor={7} zIndexRange={[10, 0]}>
+      <Html position={[0, h + 0.08 * scale, 0]} center zIndexRange={[10, 0]}>
         <button
           onClick={onClick}
           className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[12px] font-semibold shadow-lg transition ${active ? "scale-110" : ""}`}
@@ -154,14 +154,14 @@ function RegionOutline({ t, half, y }: { t: TerrainPatch; half: number; y: (e: n
   return <Line points={pts} color="#e2e8f0" lineWidth={1.5} dashed dashSize={0.15} gapSize={0.1} transparent opacity={0.7} />;
 }
 
-function ZoneMarker({ z, ellipse, y, primary, active, onClick }: { z: LandingZone; ellipse: number; y: number; primary: boolean; active: boolean; onClick: () => void }) {
+function ZoneMarker({ z, ellipse, y, primary, active, onClick, scale }: { z: LandingZone; ellipse: number; y: number; primary: boolean; active: boolean; onClick: () => void; scale: number }) {
   const color = primary ? ZONE_PRIMARY : ZONE_BACKUP;
   const pos: [number, number, number] = [z.east_m / 1000, 0, -z.north_m / 1000];
   return (
     <group position={pos}>
       <Ring radiusM={ellipse} y={y + 0.03} color={color} opacity={active || primary ? 1 : 0.8} />
       <Ring radiusM={Math.min(z.margin_m, ellipse * 4)} y={y + 0.03} color={color} dashed opacity={0.35} />
-      <Pin pos={[0, y, 0]} color={color} label={z.id} sub={`${Math.round(z.mean_success * 100)}%`} big={primary} active={active} onClick={onClick} />
+      <Pin pos={[0, y, 0]} color={color} label={z.id} sub={`${Math.round(z.mean_success * 100)}%`} big={primary} active={active} onClick={onClick} scale={scale} />
     </group>
   );
 }
@@ -169,7 +169,7 @@ function ZoneMarker({ z, ellipse, y, primary, active, onClick }: { z: LandingZon
 function FrameCamera({ size }: { size: number }) {
   const { camera, invalidate } = useThree();
   useEffect(() => {
-    camera.position.set(size * 0.32, size * 0.42, size * 0.62);
+    camera.position.set(size * 0.12, size * 0.78, size * 0.62);
     camera.lookAt(0, 0, 0);
     invalidate();
   }, [camera, size, invalidate]);
@@ -228,6 +228,7 @@ function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMa
           primary={z.rank === 1}
           active={focusZone === z.id}
           onClick={() => setFocusZone(focusZone === z.id ? null : z.id)}
+          scale={Math.max(1, size / 6)}
         />
       ))}
       {z1 &&

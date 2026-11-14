@@ -77,7 +77,10 @@ function SiteHint() {
           </div>
         </>
       )}
-      <div className="mt-1.5">Cyan ring: landing zone · dashed ring: divert range · numbered pins: backup sites. Shadows follow the real Sun.</div>
+      <div className="mt-1.5">
+        Dashed square: the candidate region · <span className="text-cyan-300">Z1</span>: primary landing zone with the landing ellipse · white Z2…: backup zones and
+        divert paths. Shadows follow the real Sun.
+      </div>
     </div>
     </>
   );

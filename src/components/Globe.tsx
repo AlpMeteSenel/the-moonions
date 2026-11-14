@@ -1,12 +1,12 @@
 "use client";
 
-import { Html, OrbitControls, Stars, useTexture } from "@react-three/drei";
+import { Html, Line, OrbitControls, Stars, useTexture } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
-import { latLonToVec3, vec3ToLatLon } from "@/lib/geo";
-import { evalKey, useStore } from "@/lib/store";
+import { latLonToVec3, regionOutline, vec3ToLatLon } from "@/lib/geo";
+import { evalKey, halfSizeOf, useStore } from "@/lib/store";
 import { TIER_COLOR, VERDICT } from "@/lib/ui";
 import PolarCap, { CAP_EDGE_LAT, type CapMeta } from "./PolarCap";
 
@@ -255,6 +255,22 @@ function BackupDot({ lat, lon, color }: { lat: number; lon: number; color: strin
   );
 }
 
+function RegionOutlines() {
+  const sites = useStore((s) => s.sites);
+  const selectedId = useStore((s) => s.selectedId);
+  const outlines = useMemo(
+    () => sites.filter((s) => s.half_size_m || s.custom).map((s) => ({ id: s.id, pts: regionOutline(s.lat, s.lon, halfSizeOf(s), Math.abs(s.lat) > 80 ? 1.0065 : 1.0045) })),
+    [sites],
+  );
+  return (
+    <group>
+      {outlines.map((o) => (
+        <Line key={o.id} points={o.pts} color={o.id === selectedId ? "#22d3ee" : "#e2e8f0"} lineWidth={o.id === selectedId ? 2 : 1} transparent opacity={o.id === selectedId ? 0.95 : 0.35} />
+      ))}
+    </group>
+  );
+}
+
 function SiteMarkers() {
   const sites = useStore((s) => s.sites);
   const selectedId = useStore((s) => s.selectedId);
@@ -349,6 +365,7 @@ export default function Globe() {
       <SunLight />
       <Moon onFlyTo={setFlyTo} />
       <Earth />
+      <RegionOutlines />
       <SiteMarkers />
       <CameraRig flyTo={flyTo} />
     </>
