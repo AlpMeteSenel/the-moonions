@@ -315,3 +315,11 @@ export interface RegionTimeline {
   windows: AIWindow[];
   step_hours: number;
 }
+
+export interface RegionSummary {
+  id: string;
+  available: boolean;
+  viable_share?: number;
+  viable_km2?: number;
+  best_success?: number;
+}

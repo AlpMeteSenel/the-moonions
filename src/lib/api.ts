@@ -1,5 +1,5 @@
 import { BACKEND_HEADERS } from "./net";
-import type { AIAssessment, AIPlan, AISiteMap, AITimeline, RegionAnalysis, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
+import type { AIAssessment, AIPlan, AISiteMap, AITimeline, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export const texture = (name: string) => `${API_URL}/static/textures/${name}`;
@@ -50,6 +50,8 @@ export const api = {
     req<AIAssessment>("/api/ai/assess", { method: "POST", body: JSON.stringify({ lat, lon, landing_time }), signal }),
   recommend: (body: { sites: { id: string; name: string; lat: number; lon: number; half_size_m?: number }[]; start: string; days: number; step_hours: number; divert_radius_m: number; n_backups?: number }) =>
     req<AIPlan>("/api/ai/recommend", { method: "POST", body: JSON.stringify(body) }),
+  regionsSummary: (regions: { id: string; lat: number; lon: number; half_size_m?: number }[], time: string) =>
+    req<{ time: string; regions: RegionSummary[] }>("/api/regions/summary", { method: "POST", body: JSON.stringify({ regions, time }) }),
   region: (lat: number, lon: number, half_size_m: number, landing_time: string, cells = 61) =>
     req<RegionAnalysis>(`/api/regions/analyze?lat=${lat}&lon=${lon}&half_size_m=${half_size_m}&landing_time=${encodeURIComponent(landing_time)}&cells=${cells}`),
   regionTimeline: (lat: number, lon: number, half_size_m: number, start: string, days = 32, step_hours = 6) =>

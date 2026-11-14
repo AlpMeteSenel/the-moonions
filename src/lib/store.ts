@@ -2,10 +2,11 @@
 
 import { create } from "zustand";
 import { api, type EvalOptions } from "./api";
-import type { AIAssessment, AIPlan, AITimeline, RegionAnalysis, RegionTimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
+import type { AIAssessment, AIPlan, AITimeline, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
 
 export type View = "globe" | "site";
 export type Panel = "planner" | "compare" | "proposals" | null;
+export type CameraPreset = "moon" | "pole" | "region";
 
 function roundHour(d = new Date()) {
   d.setUTCMinutes(0, 0, 0);
@@ -66,6 +67,9 @@ interface State {
   regionLoading: Record<string, boolean>;
   regionTimelines: Record<string, RegionTimeline>;
   focusZone: string | null;
+  summaries: Record<string, Record<string, RegionSummary>>;
+  cameraPreset: { kind: CameraPreset; nonce: number };
+  showHistoric: boolean;
 
   init: () => Promise<void>;
   select: (id: string | null) => void;
@@ -104,7 +108,13 @@ interface State {
   loadRegionTimeline: (id: string) => Promise<void>;
   setFocusZone: (id: string | null) => void;
   setRegionSize: (id: string, half_size_m: number) => void;
+  loadSummaries: () => Promise<void>;
+  setCameraPreset: (kind: CameraPreset) => void;
+  toggleHistoric: () => void;
 }
+
+/** Hour key used for map summaries (backend caches the polar AI map per hour). */
+export const hourOf = (iso: string) => iso.slice(0, 13) + ":00:00Z";
 
 export const DEFAULT_HALF_SIZE = 3000;
 export const halfSizeOf = (site: { half_size_m?: number }) => site.half_size_m ?? DEFAULT_HALF_SIZE;
@@ -162,11 +172,15 @@ export const useStore = create<State>((set, get) => ({
   regionLoading: {},
   regionTimelines: {},
   focusZone: null,
+  summaries: {},
+  cameraPreset: { kind: "pole", nonce: 0 },
+  showHistoric: false,
 
   init: async () => {
     const [sites] = await Promise.all([api.sites(), get().refreshSun(), get().loadProposals(), get().loadModelCard()]);
     const all = [...sites, ...loadCustom()];
     set({ sites: all, planSiteIds: all.filter((x) => x.group === "Artemis III region").map((x) => x.id) });
+    void get().loadSummaries();
   },
 
   select: (id) => {
@@ -184,6 +198,7 @@ export const useStore = create<State>((set, get) => ({
   setLandingTime: (iso) => {
     set({ landingTime: iso });
     void get().refreshSun();
+    void get().loadSummaries();
     const { selectedId, compareIds } = get();
     if (selectedId) {
       void get().evaluate(selectedId);
@@ -426,6 +441,21 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   setFocusZone: (id) => set({ focusZone: id }),
+  loadSummaries: async () => {
+    const s = get();
+    const hour = hourOf(s.landingTime);
+    if (s.summaries[hour]) return;
+    const regions = s.sites.filter((x) => x.group !== "Historic landing").map((x) => ({ id: x.id, lat: x.lat, lon: x.lon, half_size_m: halfSizeOf(x) }));
+    if (!regions.length) return;
+    try {
+      const res = await api.regionsSummary(regions, hour);
+      set({ summaries: { ...get().summaries, [hour]: Object.fromEntries(res.regions.map((r) => [r.id, r])) } });
+    } catch {
+      /* AI offline */
+    }
+  },
+  setCameraPreset: (kind) => set({ cameraPreset: { kind, nonce: get().cameraPreset.nonce + 1 } }),
+  toggleHistoric: () => set({ showHistoric: !get().showHistoric }),
   setRegionSize: (id, half) => {
     const sites = get().sites.map((x) => (x.id === id ? { ...x, half_size_m: half } : x));
     set({ sites });

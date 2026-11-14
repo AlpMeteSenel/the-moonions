@@ -10,6 +10,8 @@ import AIPlanner from "./ai/AIPlanner";
 import { SEQ_GRADIENT } from "./ai/palette";
 import ModelCardModal from "./ai/ModelCardModal";
 import CandidateRail from "./CandidateRail";
+import MapHud from "./map/MapHud";
+import TimeScrubber from "./map/TimeScrubber";
 import ComparePanel from "./ComparePanel";
 import ProposalsPanel from "./ProposalsPanel";
 import SitePanel from "./SitePanel";
@@ -23,7 +25,7 @@ function StatusLine({ health, error }: { health: Health | null; error: string | 
   const card = useStore((s) => s.modelCard);
   const setShowModelCard = useStore((s) => s.setShowModelCard);
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-2 text-[10px] text-white/45">
+    <div className="pointer-events-none absolute bottom-[86px] left-3 flex flex-wrap gap-2 text-[10px] text-white/45">
       {error ? (
         <span className="rounded bg-red-500/20 px-2 py-1 text-red-200">Backend offline: {error}</span>
       ) : health ? (
@@ -106,7 +108,9 @@ export default function Dashboard() {
         <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             <MoonScene />
+            <MapHud />
             <SiteHint />
+            <TimeScrubber />
             <StatusLine health={health} error={error} />
           </div>
           {panel && (

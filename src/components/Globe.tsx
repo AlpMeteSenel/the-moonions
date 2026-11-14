@@ -1,14 +1,15 @@
 "use client";
 
-import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
+import { Html, OrbitControls, Stars } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
 import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
-import { latLonToVec3, regionOutline, vec3ToLatLon } from "@/lib/geo";
-import { evalKey, halfSizeOf, useStore } from "@/lib/store";
-import { TIER_COLOR, VERDICT } from "@/lib/ui";
+import { latLonToVec3, vec3ToLatLon } from "@/lib/geo";
+import { evalKey, useStore } from "@/lib/store";
+import { VERDICT } from "@/lib/ui";
+import RegionLayer from "./map/RegionLayer";
 import PolarCap, { CAP_EDGE_LAT, type CapMeta } from "./PolarCap";
 
 const MOON_R_KM = 1737.4;
@@ -243,35 +244,6 @@ function Marker({ id, lat, lon, name, color, selected, score }: { id: string; la
   );
 }
 
-function BackupDot({ lat, lon, color }: { lat: number; lon: number; color: string }) {
-  const at = useMemo(() => latLonToVec3(lat, lon, 1.0 + (Math.abs(lat) > 80 ? 0.006 : 0.004)), [lat, lon]);
-  const ref = useZoomScale(at);
-  return (
-    <group ref={ref} position={at}>
-      <mesh raycast={() => null}>
-        <sphereGeometry args={[0.0035, 10, 10]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-    </group>
-  );
-}
-
-function RegionOutlines() {
-  const sites = useStore((s) => s.sites);
-  const selectedId = useStore((s) => s.selectedId);
-  const outlines = useMemo(
-    () => sites.filter((s) => s.half_size_m || s.custom).map((s) => ({ id: s.id, pts: regionOutline(s.lat, s.lon, halfSizeOf(s), Math.abs(s.lat) > 80 ? 1.0065 : 1.0045) })),
-    [sites],
-  );
-  return (
-    <group>
-      {outlines.map((o) => (
-        <Line key={o.id} points={o.pts} color={o.id === selectedId ? "#22d3ee" : "#e2e8f0"} lineWidth={o.id === selectedId ? 2 : 1} transparent opacity={o.id === selectedId ? 0.95 : 0.35} />
-      ))}
-    </group>
-  );
-}
-
 function SiteMarkers() {
   const sites = useStore((s) => s.sites);
   const selectedId = useStore((s) => s.selectedId);
@@ -281,15 +253,15 @@ function SiteMarkers() {
   const divertRadius = useStore((s) => s.divertRadius);
   const missionHours = useStore((s) => s.missionHours);
   const keyOf = (id: string) => evalKey(id, { landingTime, profile, divertRadius, missionHours });
-  const selEval = selectedId ? evals[keyOf(selectedId)] : undefined;
+  const showHistoric = useStore((s) => s.showHistoric);
   return (
     <group>
-      {sites.map((s) => {
+      {sites.filter((s) => s.group === "Historic landing" && (showHistoric || s.id === selectedId)).map((s) => {
         const ev = evals[keyOf(s.id)];
         const color = ev ? VERDICT[ev.verdict].color : s.custom ? "#22d3ee" : s.group.startsWith("Historic") ? "#94a3b8" : "#e2e8f0";
         return <Marker key={s.id} id={s.id} lat={s.lat} lon={s.lon} name={s.name} color={color} selected={s.id === selectedId} score={ev?.overall} />;
       })}
-      {selEval?.backups?.map((b) => <BackupDot key={b.id} lat={b.lat} lon={b.lon} color={TIER_COLOR[b.tier]} />)}
+
     </group>
   );
 }
@@ -297,6 +269,7 @@ function SiteMarkers() {
 function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   const selected = useStore((s) => s.sites.find((x) => x.id === s.selectedId));
   const sun = useStore((s) => s.sun);
+  const preset = useStore((s) => s.cameraPreset);
   const framed = useRef(false);
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const target = useRef<THREE.Vector3 | null>(null);
@@ -306,13 +279,22 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   useEffect(() => {
     if (framed.current || selected || !sun) return;
     framed.current = true;
-    target.current = latLonToVec3(-50, sun.sun_lon - 20, 2.9);
+    target.current = latLonToVec3(-87.5, sun.sun_lon - 15, 1.45);
     invalidate();
   }, [sun, selected, invalidate]);
 
   useEffect(() => {
+    if (preset.nonce === 0) return;
+    const lon = sun?.sun_lon ?? 0;
+    if (preset.kind === "moon") target.current = latLonToVec3(-30, lon - 25, 3.2);
+    else if (preset.kind === "pole") target.current = latLonToVec3(-87.5, lon - 15, 1.45);
+    else if (selected) target.current = latLonToVec3(selected.lat, selected.lon, 1.09);
+    invalidate();
+  }, [preset, sun, selected, invalidate]);
+
+  useEffect(() => {
     if (!selected) return;
-    target.current = latLonToVec3(selected.lat, selected.lon, 1.32);
+    target.current = latLonToVec3(selected.lat, selected.lon, 1.09);
     invalidate();
   }, [selected, invalidate]);
 
@@ -366,7 +348,7 @@ export default function Globe() {
       <SunLight />
       <Moon onFlyTo={setFlyTo} />
       <Earth />
-      <RegionOutlines />
+      <RegionLayer />
       <SiteMarkers />
       <CameraRig flyTo={flyTo} />
     </>
