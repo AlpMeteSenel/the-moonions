@@ -1,14 +1,16 @@
 "use client";
 
 import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { api } from "@/lib/api";
-import { bearingToEN, enuToScene, fmtDist, sunVectorLocal } from "@/lib/geo";
-import { useEval, useSelected, useStore } from "@/lib/store";
-import type { AISiteMap, BackupSite, Evaluation, TerrainPatch } from "@/lib/types";
+import { sunVectorLocal } from "@/lib/geo";
+import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
+import type { AISiteMap, Evaluation, LandingZone, RegionAnalysis, TerrainPatch } from "@/lib/types";
 import { seqColor } from "./ai/palette";
-import { TIER_COLOR, VERDICT } from "@/lib/ui";
+import { ZONE_BACKUP, ZONE_PRIMARY } from "./ai/RegionVerdict";
+import { VERDICT } from "@/lib/ui";
 
 const V_EXAG = 2.0; // vertical exaggeration so relief reads at km scale
 
@@ -70,11 +72,14 @@ function TerrainMesh({ t, slopeTint, aiMap }: { t: TerrainPatch; slopeTint: bool
     const step = (2 * t.half_size_m) / (n - 1);
     for (let i = 0; i < pos.count; i++) {
       pos.setY(i, (t.heights[i] * V_EXAG) / 1000);
-      if (aiMap?.available) {
-        const east = (i % n) * step - t.half_size_m;
-        const north = t.half_size_m - Math.floor(i / n) * step;
+      const east = (i % n) * step - t.half_size_m;
+      const north = t.half_size_m - Math.floor(i / n) * step;
+      if (aiMap?.available && Math.abs(east) <= aiMap.half_size_m && Math.abs(north) <= aiMap.half_size_m) {
         c.set(seqColor(sampleAI(aiMap, east, north)));
-      } else if (slopeTint) slopeColor(t.slopes[i], c);
+      } else if (slopeTint) {
+        slopeColor(t.slopes[i], c);
+        if (aiMap?.available) c.multiplyScalar(0.55); // outside the region: dimmed context
+      }
       else c.set("#8a8d91");
       colors.set([c.r, c.g, c.b], i * 3);
     }
@@ -124,10 +129,57 @@ function Pin({ pos, color, label, sub, big = false, onClick, active }: { pos: [n
   );
 }
 
-function Scene({ t, ev, aiMap }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null }) {
-  const focusBackup = useStore((s) => s.focusBackup);
+function RegionOutline({ t, half, y }: { t: TerrainPatch; half: number; y: (e: number, n: number) => number }) {
+  const pts = useMemo(() => {
+    const out: THREE.Vector3[] = [];
+    const corners: [number, number][] = [
+      [-half, half],
+      [half, half],
+      [half, -half],
+      [-half, -half],
+      [-half, half],
+    ];
+    for (let c = 0; c < 4; c++) {
+      const [e0, n0] = corners[c];
+      const [e1, n1] = corners[c + 1];
+      for (let k = 0; k <= 40; k++) {
+        const e = e0 + ((e1 - e0) * k) / 40;
+        const n = n0 + ((n1 - n0) * k) / 40;
+        out.push(new THREE.Vector3(e / 1000, y(e, n) + 0.04, -n / 1000));
+      }
+    }
+    return out;
+  }, [half, y]);
+  void t;
+  return <Line points={pts} color="#e2e8f0" lineWidth={1.5} dashed dashSize={0.15} gapSize={0.1} transparent opacity={0.7} />;
+}
+
+function ZoneMarker({ z, ellipse, y, primary, active, onClick }: { z: LandingZone; ellipse: number; y: number; primary: boolean; active: boolean; onClick: () => void }) {
+  const color = primary ? ZONE_PRIMARY : ZONE_BACKUP;
+  const pos: [number, number, number] = [z.east_m / 1000, 0, -z.north_m / 1000];
+  return (
+    <group position={pos}>
+      <Ring radiusM={ellipse} y={y + 0.03} color={color} opacity={active || primary ? 1 : 0.8} />
+      <Ring radiusM={Math.min(z.margin_m, ellipse * 4)} y={y + 0.03} color={color} dashed opacity={0.35} />
+      <Pin pos={[0, y, 0]} color={color} label={z.id} sub={`${Math.round(z.mean_success * 100)}%`} big={primary} active={active} onClick={onClick} />
+    </group>
+  );
+}
+
+function FrameCamera({ size }: { size: number }) {
+  const { camera, invalidate } = useThree();
+  useEffect(() => {
+    camera.position.set(size * 0.32, size * 0.42, size * 0.62);
+    camera.lookAt(0, 0, 0);
+    invalidate();
+  }, [camera, size, invalidate]);
+  return null;
+}
+
+function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis }) {
   const real = useStore((s) => s.realLighting);
-  const setFocusBackup = useStore((s) => s.setFocusBackup);
+  const focusZone = useStore((s) => s.focusZone);
+  const setFocusZone = useStore((s) => s.setFocusZone);
   const sunF = ev.factors.find((f) => f.key === "sunlight");
   const az = Number(sunF?.details.sun_azimuth_deg ?? 90);
   const el = Number(sunF?.details.sun_elevation_deg ?? 20);
@@ -139,18 +191,15 @@ function Scene({ t, ev, aiMap }: { t: TerrainPatch; ev: Evaluation; aiMap: AISit
   const earthDir = sunVectorLocal(eAz, eEl);
   const size = (2 * t.half_size_m) / 1000;
   const y0 = (sampleHeight(t, 0, 0) * V_EXAG) / 1000;
-  const zone = 300;
-  const divert = ev.divert?.radius_m ?? 3000;
-
-  const backupPos = (b: BackupSite): [number, number, number] => {
-    const [e, n] = bearingToEN(b.distance_m, b.bearing_deg);
-    return enuToScene(e, n, sampleHeight(t, e, n) * V_EXAG);
-  };
+  const yAt = useMemo(() => (e: number, n: number) => (sampleHeight(t, e, n) * V_EXAG) / 1000, [t]);
+  const zones = region?.available ? region.zones : [];
+  const z1 = zones[0];
 
   return (
     <>
       <color attach="background" args={["#010208"]} />
-      <Stars radius={60} depth={30} count={3000} factor={3} fade />
+      <Stars radius={size * 6} depth={size * 3} count={3000} factor={3} fade />
+      <FrameCamera size={size} />
       <directionalLight
         position={sunDir.clone().multiplyScalar(size * 2)}
         intensity={real ? (el > -1 ? 3.2 : 0.5) : 2.2}
@@ -168,44 +217,32 @@ function Scene({ t, ev, aiMap }: { t: TerrainPatch; ev: Evaluation; aiMap: AISit
       <hemisphereLight args={["#c7d2fe", "#1a1a22", real ? 0.55 : 0.9]} />
       <TerrainMesh t={t} slopeTint aiMap={aiMap} />
 
-      {/* primary landing zone */}
-      <Ring radiusM={zone} y={y0 + 0.02} color="#22d3ee" />
-      <Ring radiusM={divert} y={y0 + 0.02} color="#e2e8f0" dashed opacity={0.45} />
-      <Pin pos={[0, y0, 0]} color={VERDICT[ev.verdict].color} label="PRIMARY" sub={`${Math.round(ev.overall)}`} big />
+      {region?.available && <RegionOutline t={t} half={region.half_size_m} y={yAt} />}
 
-      {ev.backups?.map((b) => {
-        const p = backupPos(b);
-        const color = TIER_COLOR[b.tier];
-        const active = focusBackup === b.id;
-        return (
-          <group key={b.id}>
-            <Line
-              points={[new THREE.Vector3(0, y0 + 0.3, 0), new THREE.Vector3(p[0] / 2, Math.max(y0, p[1]) + 0.5, p[2] / 2), new THREE.Vector3(p[0], p[1] + 0.3, p[2])]}
-              color={color}
-              lineWidth={active ? 3 : 1.5}
-              dashed
-              dashSize={0.06}
-              gapSize={0.04}
-              transparent
-              opacity={active ? 1 : 0.65}
-            />
-            <Ring radiusM={150} y={p[1] + 0.015} color={color} opacity={0.9} />
-            <group position={[p[0], 0, p[2]]}>
-              <Pin
-                pos={[0, p[1], 0]}
-                color={color}
-                label={b.id}
-                sub={`${fmtDist(b.distance_m)} · ${Math.round(b.overall)}`}
-                active={active}
-                onClick={() => setFocusBackup(active ? null : b.id)}
-              />
-            </group>
-          </group>
-        );
-      })}
+      {zones.map((z) => (
+        <ZoneMarker
+          key={z.id}
+          z={z}
+          ellipse={region!.ellipse_radius_m}
+          y={yAt(z.east_m, z.north_m)}
+          primary={z.rank === 1}
+          active={focusZone === z.id}
+          onClick={() => setFocusZone(focusZone === z.id ? null : z.id)}
+        />
+      ))}
+      {z1 &&
+        zones.slice(1).map((z) => {
+          const a = new THREE.Vector3(z1.east_m / 1000, yAt(z1.east_m, z1.north_m) + 0.3, -z1.north_m / 1000);
+          const b = new THREE.Vector3(z.east_m / 1000, yAt(z.east_m, z.north_m) + 0.3, -z.north_m / 1000);
+          const mid = a.clone().add(b).multiplyScalar(0.5).add(new THREE.Vector3(0, a.distanceTo(b) * 0.12, 0));
+          const active = focusZone === z.id;
+          return <Line key={z.id} points={[a, mid, b]} color={ZONE_BACKUP} lineWidth={active ? 2.5 : 1.2} dashed dashSize={0.12} gapSize={0.08} transparent opacity={active ? 0.95 : 0.45} />;
+        })}
 
-      {/* north arrow and Earth direction */}
-      <Html position={[0, y0, -size / 2 - 0.25]} center>
+      {!region?.available && <Pin pos={[0, y0, 0]} color={VERDICT[ev.verdict].color} label="CENTRE" sub={`${Math.round(ev.overall)}`} big />}
+
+      {/* north arrow and Earth / Sun directions */}
+      <Html position={[0, y0, -size / 2 - size * 0.03]} center>
         <div className="text-xs font-bold tracking-widest text-white/70">N</div>
       </Html>
       <Html position={earthDir.clone().multiplyScalar(size * 0.6).add(new THREE.Vector3(0, y0, 0))} center>
@@ -217,7 +254,7 @@ function Scene({ t, ev, aiMap }: { t: TerrainPatch; ev: Evaluation; aiMap: AISit
         <div className="whitespace-nowrap rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] text-amber-200">☀ Sun {el.toFixed(1)}°</div>
       </Html>
 
-      <OrbitControls target={[0, y0, 0]} maxPolarAngle={Math.PI / 2.05} minDistance={0.8} maxDistance={size * 2.5} enableDamping />
+      <OrbitControls target={[0, y0, 0]} maxPolarAngle={Math.PI / 2.05} minDistance={size * 0.08} maxDistance={size * 2.5} enableDamping />
     </>
   );
 }
@@ -225,33 +262,20 @@ function Scene({ t, ev, aiMap }: { t: TerrainPatch; ev: Evaluation; aiMap: AISit
 export default function SiteView() {
   const site = useSelected();
   const ev = useEval(site?.id);
-  const divert = useStore((s) => s.divertRadius);
-  const landingTime = useStore((s) => s.landingTime);
+  const region = useRegion(site?.id);
   const showAiMap = useStore((s) => s.showAiMap);
   const [patch, setPatch] = useState<TerrainPatch | null>(null);
-  const [aiMap, setAiMap] = useState<AISiteMap | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const half = site ? halfSizeOf(site) : DEFAULT_HALF_SIZE;
+
+  const aiMap = useMemo<AISiteMap | null>(
+    () => (showAiMap && region?.available ? { available: true, half_size_m: region.half_size_m, cells: region.cells, success: region.success, touchdown: region.touchdown } : null),
+    [showAiMap, region],
+  );
 
   useEffect(() => {
-    if (!site || !patch || !showAiMap) {
-      setAiMap(null);
-      useStore.setState({ aiMapStatus: null });
-      return;
-    }
-    let live = true;
-    useStore.setState({ aiMapStatus: "loading" });
-    api
-      .siteMap(site.lat, site.lon, landingTime, patch.half_size_m, 25)
-      .then((m) => {
-        if (!live) return;
-        setAiMap(m.available ? m : null);
-        useStore.setState({ aiMapStatus: m.available ? "ready" : null });
-      })
-      .catch(() => live && useStore.setState({ aiMapStatus: null }));
-    return () => {
-      live = false;
-    };
-  }, [site, patch, landingTime, showAiMap]);
+    useStore.setState({ aiMapStatus: !showAiMap ? null : aiMap ? "ready" : region === undefined ? "loading" : null });
+  }, [aiMap, region, showAiMap]);
 
   useEffect(() => {
     if (!site) return;
@@ -259,18 +283,18 @@ export default function SiteView() {
     setPatch(null);
     setErr(null);
     api
-      .terrain(site.lat, site.lon, Math.max(2000, divert * 1.35), 181)
+      .terrain(site.lat, site.lon, Math.max(2000, half * 1.12), 201)
       .then((p) => live && setPatch(p))
       .catch((e) => live && setErr(String(e)));
     return () => {
       live = false;
     };
-  }, [site, divert]);
+  }, [site, half]);
 
   useEffect(() => {
     useStore.setState({ siteStatus: !site ? "Select a candidate to inspect the site" : err ? `Terrain error: ${err}` : !ev || !patch ? "Loading terrain…" : null });
   }, [site, ev, patch, err]);
 
   if (!site || !ev || !patch) return null;
-  return <Scene t={patch} ev={ev} aiMap={aiMap} />;
+  return <Scene t={patch} ev={ev} aiMap={aiMap} region={region} />;
 }
