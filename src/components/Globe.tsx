@@ -1,10 +1,11 @@
 "use client";
 
-import { Html, Line, OrbitControls, Stars, useTexture } from "@react-three/drei";
-import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
+import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
+import { type ThreeEvent, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
+import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
 import { latLonToVec3, regionOutline, vec3ToLatLon } from "@/lib/geo";
 import { evalKey, halfSizeOf, useStore } from "@/lib/store";
 import { TIER_COLOR, VERDICT } from "@/lib/ui";
@@ -23,7 +24,7 @@ export interface TextureMeta {
 function useTextureMeta() {
   const [meta, setMeta] = useState<TextureMeta | null>(null);
   useEffect(() => {
-    fetch(texture("textures.json"))
+    fetch(texture("textures.json"), { headers: BACKEND_HEADERS })
       .then((r) => r.json())
       .then(setMeta)
       .catch(() => setMeta({}));
@@ -52,7 +53,7 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   const meta = useTextureMeta();
   const caps = meta?.caps;
   const band = useBandGeometry(Boolean(caps?.cap_s));
-  const [color, normal, height, hazard] = useTexture([
+  const [color, normal, height, hazard] = useLoader(HeaderTextureLoader, [
     texture("moon_color_4k.jpg"),
     texture("moon_normal_4k.jpg"),
     texture("moon_height_2k.png"),

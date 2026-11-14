@@ -3,7 +3,7 @@
 import { Crosshair, Loader2, Search, Trash2 } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { fmtLat, fmtLon } from "@/lib/geo";
-import { aiKey, evalKey, useStore } from "@/lib/store";
+import { evalKey, halfSizeOf, regionKey, useStore } from "@/lib/store";
 import type { Site } from "@/lib/types";
 import { scoreColor } from "@/lib/ui";
 
@@ -13,12 +13,12 @@ const Row = memo(function Row({ site }: { site: Site }) {
   const selected = useStore((s) => s.selectedId === site.id);
   const inCmp = useStore((s) => s.compareIds.includes(site.id));
   const ev = useStore((s) => s.evals[evalKey(site.id, s)]);
-  const ai = useStore((s) => s.ai[aiKey(site.id, s.landingTime)]);
+  const region = useStore((s) => s.regions[regionKey(site.id, s.landingTime, halfSizeOf(site))]);
   const loading = useStore((s) => Boolean(s.loading[site.id]));
   const select = useStore((s) => s.select);
   const toggleCompare = useStore((s) => s.toggleCompare);
   const removeSite = useStore((s) => s.removeSite);
-  const p = ai?.available ? ai.success_probability : undefined;
+  const viable = region?.available ? region.stats.viable_km2 : undefined;
   return (
     <div
       onClick={() => select(site.id)}
@@ -41,9 +41,9 @@ const Row = memo(function Row({ site }: { site: Site }) {
           {fmtLat(site.lat)} · {fmtLon(site.lon)}
         </div>
       </div>
-      {p !== undefined && (
-        <span className="rounded bg-sky-400/15 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-sky-200" title="AI landing-success likelihood">
-          AI {Math.round(p * 100)}%
+      {viable !== undefined && (
+        <span className="rounded bg-sky-400/15 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-sky-200" title="AI: viable landing area in this region at the touchdown time">
+          {viable >= 10 ? Math.round(viable) : viable} km²
         </span>
       )}
       {loading ? (

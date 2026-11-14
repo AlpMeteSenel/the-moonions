@@ -1,3 +1,4 @@
+import { BACKEND_HEADERS } from "./net";
 import type { AIAssessment, AIPlan, AISiteMap, AITimeline, RegionAnalysis, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -6,7 +7,7 @@ export const texture = (name: string) => `${API_URL}/static/textures/${name}`;
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...BACKEND_HEADERS, ...(init?.headers ?? {}) },
   });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json() as Promise<T>;

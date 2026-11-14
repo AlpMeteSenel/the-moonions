@@ -1,10 +1,10 @@
 "use client";
 
-import { useTexture } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { useLoader, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { texture } from "@/lib/api";
+import { HeaderTextureLoader, blobUrl } from "@/lib/net";
 import { latLonToVec3 } from "@/lib/geo";
 
 export const CAP_EDGE_LAT = 80; // caps cover |lat| >= 80, the base sphere stops just past it
@@ -29,7 +29,13 @@ function useHeightPixels(url: string) {
       ctx.drawImage(img, 0, 0);
       setPx({ data: ctx.getImageData(0, 0, img.width, img.height).data, w: img.width, h: img.height });
     };
-    img.src = url;
+    let live = true;
+    blobUrl(url)
+      .then((b) => live && (img.src = b))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [url]);
   return px;
 }
@@ -44,7 +50,7 @@ function useOverlay(url: string | null | undefined) {
       return;
     }
     let live = true;
-    new THREE.TextureLoader().load(
+    new HeaderTextureLoader().load(
       url,
       (t) => {
         if (!live) return;
@@ -67,7 +73,7 @@ function useOverlay(url: string | null | undefined) {
 
 export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pole: "s" | "n"; meta: CapMeta; exaggeration: number; overlayUrl?: string | null }) {
   const overlay = useOverlay(overlayUrl);
-  const [color, normal] = useTexture([texture(`cap_${pole}_color.jpg`), texture(`cap_${pole}_normal.jpg`)]);
+  const [color, normal] = useLoader(HeaderTextureLoader, [texture(`cap_${pole}_color.jpg`), texture(`cap_${pole}_normal.jpg`)]);
   const px = useHeightPixels(texture(`cap_${pole}_height.png`));
   useMemo(() => {
     color.colorSpace = THREE.SRGBColorSpace;
