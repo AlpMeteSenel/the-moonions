@@ -325,3 +325,47 @@ export interface RegionSummary {
   shares?: { terrain: number; sunlight: number; power: number; earth_link: number };
   limiting?: "terrain" | "sunlight" | "power" | "earth_link";
 }
+
+export interface SkyEvent {
+  in_hours: number;
+  at: string;
+}
+
+/** /api/conditions: Sun & Earth relative to the local skyline over the next days (validated physics). */
+export interface Conditions {
+  site: { lat: number; lon: number; elevation_m: number };
+  start: string;
+  days: number;
+  comm_mask_deg: number;
+  now: {
+    sun_elevation_deg: number;
+    sun_azimuth_deg: number;
+    sun_above_skyline_deg: number;
+    sun_visible_fraction: number;
+    earth_elevation_deg: number;
+    earth_azimuth_deg: number;
+    earth_above_skyline_deg: number;
+    sun_up: boolean;
+    earth_up: boolean;
+  };
+  next: { sunset: SkyEvent | null; sunrise: SkyEvent | null; earthset: SkyEvent | null; earthrise: SkyEvent | null };
+  period: {
+    sunlit_hours: number;
+    sunlit_share: number;
+    longest_darkness_hours: number;
+    max_sun_elevation_deg: number;
+    earth_hours: number;
+    earth_share: number;
+    longest_earth_gap_hours: number;
+  };
+  stay: { hours: number; power_ok: boolean; lowest_battery: number; sunlit_share: number; earth_share: number };
+  eclipses: { start: string; end: string; max_covered: number }[];
+  series: {
+    times: string[];
+    sun_elevation: number[];
+    sun_above_skyline: number[];
+    sun_visible_fraction: number[];
+    earth_above_skyline: number[];
+    battery: number[];
+  };
+}

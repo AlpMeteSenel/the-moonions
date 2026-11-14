@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { api, type EvalOptions } from "./api";
-import type { AIAssessment, AIPlan, AITimeline, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
+import type { AIAssessment, AIPlan, AITimeline, Conditions, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, ModelCard, Profile, Proposal, Site, SunState, Timeline } from "./types";
 
 export type View = "globe" | "site";
 export type Panel = "planner" | "compare" | "proposals" | null;
@@ -46,6 +46,9 @@ interface State {
   showHazard: boolean;
   realLighting: boolean;
   compareIds: string[];
+  /** Extra comparison options: a site at the planned time shifted by offsetH (date slips). */
+  compareSlips: { siteId: string; offsetH: number }[];
+  conditions: Record<string, Conditions>;
   evals: Record<string, Evaluation>;
   loading: Record<string, boolean>;
   errors: Record<string, string>;
@@ -86,6 +89,9 @@ interface State {
   toggleLighting: () => void;
   togglePlacing: () => void;
   toggleCompare: (id: string) => void;
+  addSlip: (siteId: string, offsetH: number) => void;
+  removeSlip: (siteId: string, offsetH: number) => void;
+  loadConditions: (siteId: string, iso: string) => Promise<void>;
   addCustom: (lat: number, lon: number, name?: string) => string;
   removeSite: (id: string) => void;
   promoteBackup: (siteId: string, backupId: string) => void;
@@ -111,7 +117,7 @@ interface State {
   loadRegionTimeline: (id: string) => Promise<void>;
   setFocusZone: (id: string | null) => void;
   setRegionSize: (id: string, half_size_m: number) => void;
-  loadSummaries: () => Promise<void>;
+  loadSummaries: (iso?: string) => Promise<void>;
   setCameraPreset: (kind: CameraPreset) => void;
   toggleHistoric: () => void;
 }
@@ -153,6 +159,8 @@ export const evalKey = (id: string, s: Pick<State, "landingTime" | "profile" | "
   `${id}|${s.landingTime}|${s.profile}|${s.divertRadius}|${s.missionHours}`;
 
 const inflight = new Map<string, Promise<Evaluation | undefined>>();
+const condInflight = new Set<string>();
+const sumInflight = new Set<string>();
 
 export const useStore = create<State>((set, get) => ({
   sites: [],
@@ -168,6 +176,8 @@ export const useStore = create<State>((set, get) => ({
   showHazard: false,
   realLighting: true,
   compareIds: [],
+  compareSlips: [],
+  conditions: {},
   evals: {},
   loading: {},
   errors: {},
@@ -468,17 +478,40 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   setFocusZone: (id) => set({ focusZone: id }),
-  loadSummaries: async () => {
+  addSlip: (siteId, offsetH) => {
+    const cur = get().compareSlips;
+    if (offsetH === 0 || cur.some((x) => x.siteId === siteId && x.offsetH === offsetH)) return;
+    set({ compareSlips: [...cur, { siteId, offsetH }].sort((a, b) => a.offsetH - b.offsetH) });
+  },
+  removeSlip: (siteId, offsetH) => set({ compareSlips: get().compareSlips.filter((x) => !(x.siteId === siteId && x.offsetH === offsetH)) }),
+  loadConditions: async (siteId, iso) => {
+    const key = `${siteId}|${iso}`;
+    const site = get().sites.find((x) => x.id === siteId);
+    if (!site || get().conditions[key] || condInflight.has(key)) return;
+    condInflight.add(key);
+    try {
+      const c = await api.conditions(site.lat, site.lon, iso, 14, get().missionHours);
+      set({ conditions: { ...get().conditions, [key]: c } });
+    } catch {
+      /* backend offline */
+    } finally {
+      condInflight.delete(key);
+    }
+  },
+  loadSummaries: async (iso) => {
     const s = get();
-    const hour = hourOf(s.landingTime);
-    if (s.summaries[hour]) return;
+    const hour = hourOf(iso ?? s.landingTime);
+    if (s.summaries[hour] || sumInflight.has(hour)) return;
     const regions = s.sites.filter((x) => x.group !== "Historic landing").map((x) => ({ id: x.id, lat: x.lat, lon: x.lon, half_size_m: halfSizeOf(x) }));
     if (!regions.length) return;
+    sumInflight.add(hour);
     try {
       const res = await api.regionsSummary(regions, hour);
       set({ summaries: { ...get().summaries, [hour]: Object.fromEntries(res.regions.map((r) => [r.id, r])) } });
     } catch {
       /* AI offline */
+    } finally {
+      sumInflight.delete(hour);
     }
   },
   setCameraPreset: (kind) => set({ cameraPreset: { kind, nonce: get().cameraPreset.nonce + 1 } }),

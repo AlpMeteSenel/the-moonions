@@ -121,10 +121,10 @@ export default function Dashboard() {
             <StatusLine health={health} error={error} />
           </div>
           {panel && (
-            <section className={`${panel === "planner" ? "h-[360px]" : "h-[300px]"} flex shrink-0 flex-col overflow-hidden border-t border-white/10 bg-slate-950`}>
+            <section className={`${panel === "planner" ? "h-[360px]" : panel === "compare" ? "h-[372px]" : "h-[300px]"} flex shrink-0 flex-col overflow-hidden border-t border-white/10 bg-slate-950`}>
               <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/60">
-                  {panel === "planner" ? "AI mission planner" : panel === "compare" ? "Candidate comparison" : "Landing proposals"}
+                  {panel === "planner" ? "AI mission planner" : panel === "compare" ? "Compare options: Sun, Earth and the stay" : "Landing proposals"}
                 </div>
                 <button onClick={() => setPanel(panel)} className="text-white/40 hover:text-white">
                   <X size={14} />

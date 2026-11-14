@@ -1,5 +1,5 @@
 import { BACKEND_HEADERS } from "./net";
-import type { AIAssessment, AIPlan, AISiteMap, AITimeline, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
+import type { AIAssessment, AIPlan, AISiteMap, AITimeline, Conditions, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export const texture = (name: string) => `${API_URL}/static/textures/${name}`;
@@ -23,6 +23,8 @@ export interface EvalOptions {
 export const api = {
   health: () => req<Health>("/api/health"),
   sites: () => req<Site[]>("/api/sites"),
+  conditions: (lat: number, lon: number, start: string, days = 14, mission_hours = 156) =>
+    req<Conditions>(`/api/conditions?lat=${lat}&lon=${lon}&start=${encodeURIComponent(start)}&days=${days}&step_min=10&mission_hours=${mission_hours}`),
   sun: (time: string) => req<SunState>(`/api/sun?time=${encodeURIComponent(time)}`),
   evaluate: (lat: number, lon: number, o: EvalOptions, signal?: AbortSignal) =>
     req<Evaluation>("/api/evaluate", { method: "POST", body: JSON.stringify({ lat, lon, ...o }), signal }),

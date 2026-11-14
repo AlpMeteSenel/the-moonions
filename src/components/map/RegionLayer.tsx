@@ -73,7 +73,7 @@ const LIMIT_TEXT: Record<string, string> = {
 type Look = { verdict: "go" | "caution" | "no-go" | null; short: string; detail: string };
 
 /** Map label + verdict. Uses the full region analysis when loaded, else the fast 1.5 km summary. */
-function regionLook(summary: RegionSummary | undefined, detail: RegionAnalysis | undefined): Look {
+export function regionLook(summary: RegionSummary | undefined, detail: RegionAnalysis | undefined): Look {
   if (detail?.available) {
     const a = regionAssessment(detail);
     const share = detail.stats.viable_share;
