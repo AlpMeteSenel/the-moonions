@@ -9,7 +9,8 @@ import { fmtDist, latLonToVec3, offsetLatLon, sunVectorLocal } from "@/lib/geo";
 import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
-import { HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
+import { DRAPE, HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
+import { hasTiles, useTileEpoch } from "./PolarTiles";
 import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
 import type { AISiteMap, Evaluation, LandingZone, RegionAnalysis, TerrainPatch } from "@/lib/types";
 import { landColor } from "./ai/palette";
@@ -174,7 +175,7 @@ function Pin({ pos, color, label, sub, big = false, onClick, active, scale = 1 }
   );
 }
 
-function RegionOutline({ t, half, y }: { t: TerrainPatch; half: number; y: (e: number, n: number) => number }) {
+function RegionOutline({ half, y }: { half: number; y: (e: number, n: number) => number }) {
   const pts = useMemo(() => {
     const out: THREE.Vector3[] = [];
     const corners: [number, number][] = [
@@ -195,7 +196,6 @@ function RegionOutline({ t, half, y }: { t: TerrainPatch; half: number; y: (e: n
     }
     return out;
   }, [half, y]);
-  void t;
   return <Line points={pts} color="#e2e8f0" lineWidth={1.5} dashed dashSize={0.15} gapSize={0.1} transparent opacity={0.7} />;
 }
 
@@ -303,7 +303,7 @@ function sunOf(ev: Evaluation, real: boolean) {
   return { el, dir: real ? sunVectorLocal(az, el) : sunVectorLocal(az, 45) };
 }
 
-function Scene({ t, ev, aiMap, region, frame, siteId, halfM }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis; frame: SiteFrame; siteId: string; halfM: number }) {
+function Scene({ t, ev, aiMap, region, frame, siteId, halfM, sizeKm, yAt }: { t: TerrainPatch | null; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis; frame: SiteFrame; siteId: string; halfM: number; sizeKm: number; yAt: (e: number, n: number) => number }) {
   const real = useStore((s) => s.realLighting);
   const focusZone = useStore((s) => s.focusZone);
   const setFocusZone = useStore((s) => s.setFocusZone);
@@ -312,17 +312,16 @@ function Scene({ t, ev, aiMap, region, frame, siteId, halfM }: { t: TerrainPatch
   const eAz = Number(earthF?.details.earth_azimuth_deg);
   const eEl = Number(earthF?.details.earth_elevation_deg);
   const earthDir = sunVectorLocal(eAz, eEl);
-  const size = (2 * t.half_size_m) / 1000;
-  const y0 = (sampleHeight(t, 0, 0) * V_EXAG) / 1000;
-  const yAt = useMemo(() => (e: number, n: number) => (sampleHeight(t, e, n) * V_EXAG) / 1000, [t]);
+  const size = sizeKm;
+  const y0 = yAt(0, 0);
   const zones = region?.available ? region.zones : [];
   const z1 = zones[0];
 
   return (
     <group matrix={frame.matrix} matrixAutoUpdate={false}>
-      <TerrainMesh t={t} slopeTint aiMap={aiMap} />
+      {t && <TerrainMesh t={t} slopeTint aiMap={aiMap} />}
 
-      {region?.available && <RegionOutline t={t} half={region.half_size_m} y={yAt} />}
+      {region?.available && <RegionOutline half={region.half_size_m} y={yAt} />}
 
       {zones.map((z) => (
         <ZoneMarker
@@ -366,6 +365,8 @@ function Scene({ t, ev, aiMap, region, frame, siteId, halfM }: { t: TerrainPatch
   );
 }
 
+const aiMapFor = (show: boolean, region?: RegionAnalysis) => show && Boolean(region?.available) && Boolean(region?.success?.length);
+
 export function SiteLayer() {
   const site = useSelected();
   const ev = useEval(site?.id);
@@ -377,7 +378,62 @@ export function SiteLayer() {
   const frame = useSiteFrame(site);
   const surface = useSurface();
   const invalidate = useThree((s) => s.invalidate);
-  const fitted = useMemo(() => (patch && frame && surface && site ? blendIntoGlobe(patch, site, frame, surface, half) : null), [patch, frame, surface, site, half]);
+  // polar sites: the LOD tiles are the terrain (down to 20 m); elsewhere a detailed patch is set into the globe
+  const tiled = Boolean(site && Math.abs(site.lat) >= 80.3 && hasTiles(site.lat < 0 ? "s" : "n"));
+  const epoch = useTileEpoch((s) => s.epoch);
+  const fitted = useMemo(() => (!tiled && patch && frame && surface && site ? blendIntoGlobe(patch, site, frame, surface, half) : null), [tiled, patch, frame, surface, site, half]);
+  const sizeKm = site ? (2 * patchHalfM(site)) / 1000 : 0;
+  // overlay heights (km above the frame centre, same exaggeration as the terrain)
+  const yAt = useMemo(() => {
+    if (fitted) return (e: number, n: number) => (sampleHeight(fitted, e, n) * V_EXAG) / 1000;
+    if (!tiled || !site || !frame || !surface) return null;
+    const rC = frame.center.length();
+    return (e: number, n: number) => {
+      const ll = offsetLatLon(site.lat, site.lon, e, n);
+      const a = Math.hypot(e, n) / (MOON_R_KM * 1000);
+      return (surface.rendered(ll.lat, ll.lon) * Math.cos(a) - rC) * MOON_R_KM;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitted, tiled, site, frame, surface, epoch]);
+
+  // the AI map painted onto the tiles inside the region
+  const drapeTex = useMemo(() => {
+    if (!tiled || !aiMapFor(showAiMap, region)) return null;
+    const r = region!;
+    const n = r.cells;
+    const data = new Uint8Array(n * n * 4);
+    for (let row = 0; row < n; row++) {
+      for (let col = 0; col < n; col++) {
+        const { rgb, a } = landColor(r.success[row * n + col]);
+        const k = ((n - 1 - row) * n + col) * 4; // texture row 0 = south
+        data[k] = rgb[0];
+        data[k + 1] = rgb[1];
+        data[k + 2] = rgb[2];
+        data[k + 3] = Math.round(a * 255);
+      }
+    }
+    const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }, [tiled, showAiMap, region]);
+  useEffect(() => {
+    if (!drapeTex || !frame || !region?.available) return;
+    DRAPE.uDrapeTex.value = drapeTex;
+    DRAPE.uDrapeC.value.copy(frame.center);
+    DRAPE.uDrapeE.value.copy(frame.east);
+    DRAPE.uDrapeN.value.copy(frame.north);
+    DRAPE.uDrapeHalf.value = (region.half_size_m / 1000) * KM;
+    DRAPE.uDrapeOn.value = 1;
+    invalidate();
+    return () => {
+      DRAPE.uDrapeOn.value = 0;
+      drapeTex.dispose();
+      invalidate();
+    };
+  }, [drapeTex, frame, region, invalidate]);
 
   const aiMap = useMemo<AISiteMap | null>(
     () => (showAiMap && region?.available ? { available: true, half_size_m: region.half_size_m, cells: region.cells, success: region.success, touchdown: region.touchdown } : null),
@@ -389,7 +445,7 @@ export function SiteLayer() {
   }, [aiMap, region, showAiMap]);
 
   useEffect(() => {
-    if (!site) return;
+    if (!site || tiled) return;
     let live = true;
     setPatch(null);
     setErr(null);
@@ -400,11 +456,11 @@ export function SiteLayer() {
     return () => {
       live = false;
     };
-  }, [site, half]);
+  }, [site, half, tiled]);
 
   useEffect(() => {
-    useStore.setState({ siteStatus: !site ? "Select a candidate to inspect the site" : err ? `Terrain error: ${err}` : !ev || !patch ? "Loading terrain…" : null });
-  }, [site, ev, patch, err]);
+    useStore.setState({ siteStatus: !site ? "Select a candidate to inspect the site" : err ? `Terrain error: ${err}` : !ev || (!tiled && !patch) ? "Loading terrain…" : null });
+  }, [site, ev, patch, err, tiled]);
 
   // cut the globe open where the detailed patch sits, once it is there to fill the hole
   useEffect(() => {
@@ -421,8 +477,8 @@ export function SiteLayer() {
     };
   }, [frame, fitted, invalidate]);
 
-  if (!site || !ev || !fitted || !frame) return null;
-  return <Scene t={fitted} ev={ev} aiMap={aiMap} region={region} frame={frame} siteId={site.id} halfM={half} />;
+  if (!site || !ev || !frame || !yAt || (!tiled && !fitted)) return null;
+  return <Scene t={fitted} ev={ev} aiMap={aiMap} region={region} frame={frame} siteId={site.id} halfM={half} sizeKm={sizeKm} yAt={yAt} />;
 }
 
 /** The site's Sun (world space), casting terrain shadows over the patch. */

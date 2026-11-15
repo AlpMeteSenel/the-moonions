@@ -91,8 +91,9 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   const showAiMap = useStore((s) => s.showAiMap);
   const aiReady = useStore((s) => Boolean(s.modelCard?.success_model));
   const landingTime = useStore((s) => s.settledTime);
-  const selectedTime = useStore((s) => s.landingTime);
-  const aiOverlay = showAiMap && aiReady && landingTime === selectedTime ? `${API_URL}/api/ai/polar-map.png?time=${encodeURIComponent(landingTime.slice(0, 13) + ":00:00Z")}` : null;
+  const inSite = useStore((s) => s.view === "site");
+  // follows the settled time (and playback frames); in the 3D site view the region's own AI map is draped on the tiles
+  const aiOverlay = showAiMap && aiReady && !inSite ? `${API_URL}/api/ai/polar-map.png?time=${encodeURIComponent(landingTime.slice(0, 13) + ":00:00Z")}` : null;
   const placing = useStore((s) => s.placing);
   const addCustom = useStore((s) => s.addCustom);
   const [hover, setHover] = useState<{ lat: number; lon: number; p: THREE.Vector3 } | null>(null);

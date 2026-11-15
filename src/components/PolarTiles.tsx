@@ -3,6 +3,7 @@
 import { useLoader, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { create } from "zustand";
 import { API_URL, texture } from "@/lib/api";
 import { latLonToVec3 } from "@/lib/geo";
 import { RELIEF_EXAGGERATION, setCapHeightProvider } from "@/lib/heights";
@@ -137,6 +138,20 @@ function buildGeometry(dn: Int16Array, south: boolean, z: number, tx: number, ty
   return geom;
 }
 
+/** Bumped (throttled) whenever tiles load, so overlays that sit on the terrain can re-fit. */
+export const useTileEpoch = create<{ epoch: number }>(() => ({ epoch: 0 }));
+let epochTimer: ReturnType<typeof setTimeout> | null = null;
+function bumpEpoch() {
+  if (epochTimer) return;
+  epochTimer = setTimeout(() => {
+    epochTimer = null;
+    useTileEpoch.setState((s) => ({ epoch: s.epoch + 1 }));
+  }, 400);
+}
+
+/** Whether a pole is drawn from tiles (the 3D site view then uses them instead of a separate patch). */
+export const hasTiles = (pole: "s" | "n") => Boolean(registries[pole]);
+
 /** Finest loaded tile height (m, true scale) at a stereographic point, or null: lets overlays sit on the tiles. */
 const registries: Record<string, { half: number; n: number; maxZ: number; tiles: Map<string, Tile> }> = {};
 export function tileHeightAt(pole: "s" | "n", x: number, y: number): number | null {
@@ -172,7 +187,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
 
   const material = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({ map: color, roughness: 0.96, metalness: 0 });
-    holeMaterial(m);
+    holeMaterial(m, true);
     return m;
   }, [color]);
   const overlayMat = useMemo(() => {
@@ -218,6 +233,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
         t.dn = new Int16Array(buf);
         t.geom = buildGeometry(t.dn, south, t.z, t.x, t.y, info.half_size_m, info.segments);
         t.state = "ready";
+        bumpEpoch();
       })
       .catch(() => {
         t.state = "failed";
@@ -329,7 +345,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
         if (!t?.geom) return null;
         return (
           <group key={key}>
-            <mesh geometry={t.geom} material={material} raycast={() => null} />
+            <mesh geometry={t.geom} material={material} raycast={() => null} castShadow receiveShadow />
             {overlay && <mesh geometry={t.geom} material={overlayMat} raycast={() => null} renderOrder={2} />}
           </group>
         );
