@@ -21,7 +21,6 @@ export default function CandidateAssessment({ region, loading = false, compact =
         <Icon size={compact ? 15 : 18} className="shrink-0" />
         <span className="flex-1 text-[13px] font-semibold leading-snug">{assessment.label}</span>
       </div>
-      <div className="mt-1 text-[10px] text-white/50">Simulation-based estimate · generic lander</div>
       <div className="mt-1.5 space-y-1 text-[11.5px] leading-snug text-white/80">
         {(compact ? assessment.reasons.slice(0, 1) : assessment.reasons).map((reason) => <p key={reason}>{reason}</p>)}
       </div>

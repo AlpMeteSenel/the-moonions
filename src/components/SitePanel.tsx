@@ -20,7 +20,7 @@ function FactorRow({ f }: { f: Factor }) {
     <div className="py-2">
       <div className="flex items-center justify-between text-[12px]">
         <span className="flex items-center gap-1.5 font-medium text-white/85">
-          {f.label} {f.score !== null && <Source kind={f.key === "backups" ? "simulated" : "computed"} />}
+          {f.label} {f.score !== null && <Source kind="computed" />}
         </span>
         <span className="font-semibold tabular-nums" style={{ color: col }}>
           {f.score === null ? "Not assessed" : f.hard_fail ? "FAIL" : Math.round(f.score)}
@@ -40,7 +40,6 @@ function ScoreTab({ ev }: { ev: Evaluation }) {
   const ai = (ev.factors.find((f) => f.key === "ground")?.details.ai ?? null) as { p_safe: number } | null;
   return (
     <div>
-      <p className="mb-2 text-[11px] leading-relaxed text-amber-200/80">Planning scores use generic thresholds and weights. They are not measured safety probabilities. Unassessed factors are excluded from the score.</p>
       <div className="divide-y divide-white/[0.06]">{factors.map((f) => <FactorRow key={f.key} f={f} />)}</div>
       <div className="mt-3 rounded-md bg-white/[0.03] p-2.5 text-[10px] leading-relaxed text-white/40">
         Terrain: {ev.terrain.source} ({Math.round(ev.terrain.resolution_m)} m detail) · tilt {ev.terrain.slope_deg.toFixed(1)}° · relief{" "}

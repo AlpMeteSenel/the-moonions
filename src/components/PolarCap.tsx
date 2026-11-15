@@ -70,7 +70,8 @@ function useOverlay(url: string | null | undefined) {
       live = false;
     };
   }, [url, invalidate]);
-  return loaded?.url === url ? loaded.tex : null;
+  // keep showing the previous map until the new hour has loaded (no blink while scrubbing)
+  return url && loaded ? loaded.tex : null;
 }
 
 export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pole: "s" | "n"; meta: CapMeta; exaggeration: number; overlayUrl?: string | null }) {

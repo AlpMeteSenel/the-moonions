@@ -76,7 +76,7 @@ function SiteHint() {
             <span className="h-2 w-24 rounded" style={{ background: LAND_GRADIENT }} />
             <span>100%</span>
           </div>
-          <div className="mt-1 text-[10px] text-white/50">Green shows higher success estimated under the generic lander simulation. Grey can mean low estimates or unavailable coverage.</div>
+          <div className="mt-1 text-[10px] text-white/50">Grey terrain = a landing would fail · green = it would succeed (brighter = surer)</div>
         </>
       ) : (
         <>

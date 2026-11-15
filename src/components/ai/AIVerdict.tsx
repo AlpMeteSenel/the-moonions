@@ -225,7 +225,7 @@ export default function AIVerdict({ site }: { site: Site }) {
         </div>
       )}
 
-      <SectionTitle source="simulated">Checks under the generic mission model</SectionTitle>
+      <SectionTitle source="computed">Physics checks for this time</SectionTitle>
       <div className="space-y-1">
         {ai.checks?.map((c) => {
           const Icon = HEAD_ICON[c.key];
