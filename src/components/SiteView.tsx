@@ -5,7 +5,8 @@ import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { api } from "@/lib/api";
-import { offsetLatLon, sunVectorLocal } from "@/lib/geo";
+import { fmtDist, offsetLatLon, sunVectorLocal } from "@/lib/geo";
+import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
 import { HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
@@ -242,6 +243,58 @@ function blendIntoGlobe(t: TerrainPatch, site: { lat: number; lon: number }, fra
   return { ...t, heights: Array.from(out) };
 }
 
+const LANDER = "#f472b6";
+
+/** The tracked lander in the site scene (km units; terrain and altitude both ×V_EXAG). */
+function SiteLander({ halfM, yAt, scale }: { halfM: number; yAt: (e: number, n: number) => number; scale: number }) {
+  const st = landerState(usePose(), halfM);
+  if (!st) return null;
+  const x = st.east_m / 1000;
+  const z = -st.north_m / 1000;
+  const g = yAt(st.east_m, st.north_m);
+  const y = g + ((st.alt_m ?? 0) * V_EXAG) / 1000 + 0.05 * scale;
+  const k = 0.24 * scale;
+  return (
+    <group>
+      <Line points={[new THREE.Vector3(x, g, z), new THREE.Vector3(x, y, z)]} color={LANDER} lineWidth={1.5} dashed dashSize={0.06} gapSize={0.04} transparent opacity={0.8} />
+      <group position={[x, g + 0.02, z]}>
+        <Ring radiusM={k * 1500} y={0} color={LANDER} dashed opacity={0.7} />
+      </group>
+      <group position={[x, y, z]} rotation={[0, st.heading_deg !== null ? (-st.heading_deg * Math.PI) / 180 : 0, 0]} scale={k}>
+        <mesh castShadow>
+          <cylinderGeometry args={[0.45, 0.55, 0.6, 8]} />
+          <meshStandardMaterial color="#e5e7eb" metalness={0.3} roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0.45, 0]} castShadow>
+          <cylinderGeometry args={[0.2, 0.4, 0.3, 8]} />
+          <meshStandardMaterial color="#cbd5e1" metalness={0.3} roughness={0.5} />
+        </mesh>
+        <mesh position={[0, -0.45, 0]}>
+          <coneGeometry args={[0.22, 0.3, 12]} />
+          <meshBasicMaterial color={LANDER} toneMapped={false} />
+        </mesh>
+        {[0, 1, 2, 3].map((i) => {
+          const a = (i * Math.PI) / 2 + Math.PI / 4;
+          return (
+            <Line key={i} points={[new THREE.Vector3(Math.cos(a) * 0.45, -0.2, Math.sin(a) * 0.45), new THREE.Vector3(Math.cos(a) * 0.9, -0.75, Math.sin(a) * 0.9)]} color="#e5e7eb" lineWidth={2} />
+          );
+        })}
+        {st.heading_deg !== null && (
+          <mesh position={[0, 0.05, -0.75]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.15, 0.35, 3]} />
+            <meshBasicMaterial color={LANDER} toneMapped={false} />
+          </mesh>
+        )}
+      </group>
+      <Html position={[x, y + 1.3 * k, z]} center zIndexRange={[12, 0]}>
+        <div className="whitespace-nowrap rounded-md border border-pink-300/50 bg-slate-950/85 px-2 py-0.5 text-[12px] font-semibold text-pink-200 shadow-lg">
+          Lander{st.alt_m !== null && <span className="ml-1.5 font-normal text-white/75">{fmtDist(st.alt_m)} up</span>}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 function sunOf(ev: Evaluation, real: boolean) {
   const sunF = ev.factors.find((f) => f.key === "sunlight");
   const az = Number(sunF?.details.sun_azimuth_deg);
@@ -250,7 +303,7 @@ function sunOf(ev: Evaluation, real: boolean) {
   return { el, dir: real ? sunVectorLocal(az, el) : sunVectorLocal(az, 45) };
 }
 
-function Scene({ t, ev, aiMap, region, frame }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis; frame: SiteFrame }) {
+function Scene({ t, ev, aiMap, region, frame, siteId, halfM }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis; frame: SiteFrame; siteId: string; halfM: number }) {
   const real = useStore((s) => s.realLighting);
   const focusZone = useStore((s) => s.focusZone);
   const setFocusZone = useStore((s) => s.setFocusZone);
@@ -291,6 +344,8 @@ function Scene({ t, ev, aiMap, region, frame }: { t: TerrainPatch; ev: Evaluatio
           const active = focusZone === z.id;
           return <Line key={z.id} points={[a, mid, b]} color={ZONE_BACKUP} lineWidth={active ? 2.5 : 1.2} dashed dashSize={0.12} gapSize={0.08} transparent opacity={active ? 0.95 : 0.45} />;
         })}
+
+      {siteId === TRACKER_SITE_ID && <SiteLander halfM={halfM} yAt={yAt} scale={Math.max(1, size / 6)} />}
 
       {!region?.available && <Pin pos={[0, y0, 0]} color={VERDICT[ev.verdict].color} label="CENTRE" sub={`${Math.round(ev.overall)}`} big />}
 
@@ -367,7 +422,7 @@ export function SiteLayer() {
   }, [frame, fitted, invalidate]);
 
   if (!site || !ev || !fitted || !frame) return null;
-  return <Scene t={fitted} ev={ev} aiMap={aiMap} region={region} frame={frame} />;
+  return <Scene t={fitted} ev={ev} aiMap={aiMap} region={region} frame={frame} siteId={site.id} halfM={half} />;
 }
 
 /** The site's Sun (world space), casting terrain shadows over the patch. */

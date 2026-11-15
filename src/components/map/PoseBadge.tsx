@@ -2,9 +2,10 @@
 
 import { Navigation } from "lucide-react";
 import { Component, type ReactNode } from "react";
-import { usePose } from "@/lib/pose";
+import { fmtDist } from "@/lib/geo";
+import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
+import { halfSizeOf, useStore } from "@/lib/store";
 
-const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** A malformed tracker payload must only hide the badge, never take the dashboard down. */
 class Guard extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -28,34 +29,45 @@ export default function PoseBadge() {
 /** Live readout of the physical pose tracker (via /api/pose). Hidden when no tracker is reachable. */
 function Badge() {
   const pose = usePose();
+  const site = useStore((s) => s.sites.find((x) => x.id === TRACKER_SITE_ID));
+  const select = useStore((s) => s.select);
   if (!pose || pose.tracking_status === "offline") return null;
-  const tracking = num(pose.x_px) && num(pose.y_px);
+  const st = site ? landerState(pose, halfSizeOf(site)) : null;
+  const dir = (v: number, pos: string, neg: string) => `${fmtDist(Math.abs(v))} ${v >= 0 ? pos : neg}`;
   return (
-    <div className="pointer-events-none absolute right-3 top-[120px] z-20 rounded-lg border border-white/10 bg-slate-950/85 px-3 py-2 text-[11px] text-white/70">
-      <div className="flex items-center gap-1.5 font-semibold text-white/85">
-        <span className={`h-2 w-2 rounded-full ${tracking ? "bg-emerald-400" : "bg-white/30"}`} />
-        Tracker · {String(pose.tracking_status)}
-        {pose.map && typeof pose.map === "object" && (
-          <span className="font-normal text-white/45">
-            · map {pose.map.width_px}×{pose.map.height_px}
-          </span>
-        )}
+    <button
+      onClick={() => site && select(site.id)}
+      className="absolute right-3 top-[120px] z-20 rounded-lg border border-pink-300/25 bg-slate-950/85 px-3 py-2 text-left text-[11px] text-white/70 hover:border-pink-300/50"
+      title={site ? `Show ${site.name}` : undefined}
+    >
+      <div className="flex items-center gap-1.5 font-semibold text-white/90">
+        <span className={`h-2 w-2 rounded-full ${st?.live ? "animate-pulse bg-pink-400" : st ? "bg-pink-300/60" : "bg-white/30"}`} />
+        Lander
+        <span className="font-normal text-white/45">· {String(pose.tracking_status)}</span>
       </div>
-      {tracking && (
-        <div className="mt-1 flex items-center gap-3 tabular-nums">
+      {st && site ? (
+        <div className="mt-1 grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 tabular-nums">
+          <span className="text-white/45">Altitude</span>
+          <span className="font-semibold text-white">{st.alt_m !== null ? fmtDist(st.alt_m) : "—"}</span>
+          <span className="text-white/45">Over</span>
+          <span>{site.name}</span>
+          <span className="text-white/45">From centre</span>
           <span>
-            x {Math.round(pose.x_px!)} · y {Math.round(pose.y_px!)} px
+            {dir(st.east_m, "E", "W")}, {dir(st.north_m, "N", "S")}
           </span>
-          {num(pose.z_m) && <span>z {pose.z_m.toFixed(2)} m</span>}
-          {num(pose.heading_deg) && (
-            <span className="flex items-center gap-1">
-              <Navigation size={11} style={{ transform: `rotate(${pose.heading_deg}deg)` }} className="text-cyan-300" />
-              {Math.round(pose.heading_deg)}°
-            </span>
+          {st.heading_deg !== null && (
+            <>
+              <span className="text-white/45">Heading</span>
+              <span className="flex items-center gap-1">
+                <Navigation size={11} style={{ transform: `rotate(${st.heading_deg}deg)` }} className="text-pink-300" />
+                {Math.round(st.heading_deg)}°
+              </span>
+            </>
           )}
-          {num(pose.frame_age_ms) && <span className="text-white/40">{Math.round(pose.frame_age_ms)} ms</span>}
         </div>
+      ) : (
+        <div className="mt-0.5 text-white/45">waiting for position…</div>
       )}
-    </div>
+    </button>
   );
 }

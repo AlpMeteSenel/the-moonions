@@ -1,16 +1,17 @@
 "use client";
 
-import { Html, OrbitControls, Stars } from "@react-three/drei";
+import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
 import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
-import { latLonToVec3, vec3ToLatLon } from "@/lib/geo";
-import { BAND_SEGMENTS, bandEdgeLat, DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION } from "@/lib/heights";
+import { fmtDist, latLonToVec3, offsetLatLon, vec3ToLatLon } from "@/lib/geo";
+import { BAND_SEGMENTS, bandEdgeLat, DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION, useSurface } from "@/lib/heights";
+import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { MOON_Q, toLocal, toWorld } from "@/lib/moonFrame";
 import { holeMaterial, KM, patchHalfM, useSiteFrame } from "@/lib/siteFrame";
-import { evalKey, useStore } from "@/lib/store";
+import { evalKey, halfSizeOf, useStore } from "@/lib/store";
 import { VERDICT } from "@/lib/ui";
 import RegionLayer from "./map/RegionLayer";
 import PolarCap, { type CapMeta } from "./PolarCap";
@@ -256,6 +257,48 @@ function Marker({ id, lat, lon, name, color, selected, score }: { id: string; la
   );
 }
 
+const LANDER = "#f472b6";
+
+function LanderGlyph({ at, alt }: { at: THREE.Vector3; alt: number | null }) {
+  const ref = useZoomScale(at, 0.7);
+  return (
+    <group ref={ref} position={at}>
+      <mesh raycast={() => null}>
+        <octahedronGeometry args={[0.009, 0]} />
+        <meshBasicMaterial color={LANDER} toneMapped={false} />
+      </mesh>
+      <Html center style={{ pointerEvents: "none" }} zIndexRange={[25, 0]}>
+        <div className="-translate-y-5 whitespace-nowrap rounded-md border border-pink-300/50 bg-slate-950/90 px-2 py-0.5 text-[11px] font-semibold text-pink-200 shadow-lg">
+          Lander{alt !== null && <span className="ml-1.5 font-normal text-white/75">{fmtDist(alt)} up</span>}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+/** The tracked lander over its region (the tracker's map = this region), at its altitude. */
+function GlobeLander() {
+  const pose = usePose();
+  const site = useStore((s) => s.sites.find((x) => x.id === TRACKER_SITE_ID));
+  const S = useSurface();
+  const st = site ? landerState(pose, halfSizeOf(site)) : null;
+  const pts = useMemo(() => {
+    if (!site || !S || !st) return null;
+    const ll = offsetLatLon(site.lat, site.lon, st.east_m, st.north_m);
+    const r0 = S.rendered(ll.lat, ll.lon);
+    // altitude drawn with the same vertical exaggeration as the terrain
+    const top = r0 + ((st.alt_m ?? 0) / 1737400) * RELIEF_EXAGGERATION;
+    return { ground: latLonToVec3(ll.lat, ll.lon, r0 + 0.0003), top: latLonToVec3(ll.lat, ll.lon, Math.max(top, r0 + 0.0006)) };
+  }, [site, S, st?.east_m, st?.north_m, st?.alt_m]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!pts || !st) return null;
+  return (
+    <group>
+      <Line points={[pts.ground, pts.top]} color={LANDER} lineWidth={1.5} dashed dashSize={0.001} gapSize={0.0007} transparent opacity={0.85} />
+      <LanderGlyph at={pts.top} alt={st.alt_m} />
+    </group>
+  );
+}
+
 function SiteMarkers() {
   const sites = useStore((s) => s.sites);
   const selectedId = useStore((s) => s.selectedId);
@@ -448,6 +491,7 @@ export default function Globe() {
           <>
             <RegionLayer />
             <SiteMarkers />
+            <GlobeLander />
           </>
         )}
       </group>
