@@ -80,3 +80,23 @@ const TONE_RANK: Record<Tone, number> = { go: 2, caution: 1, "no-go": 0 };
 export function rankKey(c: Conditions, viableShare: number | undefined): number {
   return TONE_RANK[stayOutcome(c).tone] * 1000 + (viableShare ?? 0) * 100 + (c.stay.sunlit_share + c.stay.earth_share) * 10;
 }
+
+/** Kelvin → "−173 °C". */
+export function fmtTemp(k: number): string {
+  const c = Math.round(k - 273.15);
+  return `${c < 0 ? "−" : ""}${Math.abs(c)} °C`;
+}
+
+/** Surface temperature now and over the stay, or null when the backend gave none. */
+export function thermalLine(c: Conditions): string | null {
+  const t = c.thermal;
+  if (!t) return null;
+  return `${fmtTemp(t.now_k)} now · ${fmtTemp(t.stay_min_k)} to ${fmtTemp(t.stay_max_k)} over the stay`;
+}
+
+/** Extreme cold (heaters for survival) or heat over the stay. */
+export function thermalTone(c: Conditions): Tone {
+  const t = c.thermal;
+  if (!t) return "go";
+  return t.stay_min_k < 100 || t.stay_max_k > 373 ? "caution" : "go";
+}

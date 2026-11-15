@@ -1,5 +1,6 @@
 "use client";
 
+import ThermalCard from "./ThermalCard";
 import { CheckCircle2, FilePlus2, Loader2, Mountain, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, ComposedChart } from "recharts";
@@ -220,7 +221,7 @@ export default function SitePanel() {
         ) : tab === "ai" ? (
           <AIVerdict site={site} />
         ) : tab === "windows" ? (
-          <><CentreNote /><WindowsTab tl={tl} landingTime={landingTime} /></>
+          <><ThermalCard site={site} /><CentreNote /><WindowsTab tl={tl} landingTime={landingTime} /></>
         ) : !ev ? (
           <div className="text-sm text-white/40">{loading ? "Evaluating…" : ""}</div>
         ) : (

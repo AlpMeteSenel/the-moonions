@@ -374,9 +374,11 @@ export interface Conditions {
   };
   stay: { hours: number; power_ok: boolean; lowest_battery: number; sunlit_share: number; earth_share: number };
   eclipses: { start: string; end: string; max_covered: number }[];
+  thermal?: { now_k: number; stay_min_k: number; stay_max_k: number; period_min_k: number; period_max_k: number; slope_deg: number; aspect_deg: number; deep_k: number };
   series: {
     times: string[];
     sun_elevation: number[];
+    surface_temp_k?: number[];
     sun_above_skyline: number[];
     sun_visible_fraction: number[];
     earth_above_skyline: number[];

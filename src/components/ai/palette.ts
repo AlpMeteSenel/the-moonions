@@ -75,3 +75,10 @@ export const HEAD_META: Record<string, { label: string; short: string }> = {
 };
 
 export const pct = (p: number | undefined | null, digits = 0) => (p === undefined || p === null ? "—" : `${(p * 100).toFixed(digits)}%`);
+
+/** Surface temperature (K) → diverging colour: cold blue, neutral grey at 0 °C, hot red. */
+export function tempColor(k: number): string {
+  const mid = 273.15;
+  if (k <= mid) return lerpHex("#383835", DIVERGING.pos, Math.min(1, (mid - k) / (mid - 40)));
+  return lerpHex("#383835", DIVERGING.neg, Math.min(1, (k - mid) / (400 - mid)));
+}

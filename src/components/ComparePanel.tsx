@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, Globe2, Loader2, Plus, Sun, X } from "lucide-react";
+import { Check, Globe2, Loader2, Plus, Sun, Thermometer, X } from "lucide-react";
 import { useEffect, useMemo } from "react";
-import { earthLine, fmtDuration, rankKey, runs, stayOutcome, sunLine, type Tone } from "@/lib/compare";
+import { earthLine, fmtDuration, rankKey, runs, stayOutcome, sunLine, thermalLine, thermalTone, type Tone } from "@/lib/compare";
+import { TempStrip } from "./ThermalCard";
 import { halfSizeOf, hourOf, regionKey, useStore } from "@/lib/store";
 import type { Conditions, Site } from "@/lib/types";
 import { fmtTime, VERDICT } from "@/lib/ui";
@@ -36,6 +37,7 @@ function DayStrip({ c }: { c: Conditions }) {
         ))}
         <path d={`M0.5,3 V0.5 H${stayX - 0.5} V3`} fill="none" stroke="#e2e8f0" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       </svg>
+      <TempStrip c={c} height={8} />
       <div className="mt-0.5 flex justify-between text-[9.5px] text-white/35">
         <span>touchdown</span>
         <span>stay {fmtDuration(c.stay.hours)}</span>
@@ -91,6 +93,14 @@ function OptionCard({ o, best }: { o: Option; best: boolean }) {
               <Globe2 size={13} className="text-sky-400" aria-label="Earth" />
             </dt>
             <dd className={c.now.earth_up ? "text-white" : "text-white/60"}>{earthLine(c)}</dd>
+            {thermalLine(c) && (
+              <>
+                <dt>
+                  <Thermometer size={13} className="text-rose-300" aria-label="Surface temperature" />
+                </dt>
+                <dd className={thermalTone(c) === "caution" ? "text-amber-200" : "text-white/80"}>{thermalLine(c)}</dd>
+              </>
+            )}
             <dt>
               <span className="block h-2.5 w-2.5 rounded-sm border" style={{ borderColor: look.verdict ? VERDICT[look.verdict].color : "#64748b" }} aria-label="Landing area" />
             </dt>
