@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { texture } from "@/lib/api";
 import { HeaderTextureLoader, blobUrl } from "@/lib/net";
 import { latLonToVec3 } from "@/lib/geo";
+import { holeMaterial } from "@/lib/siteFrame";
 
 export const CAP_EDGE_LAT = 80; // caps cover |lat| >= 80, the base sphere stops just past it
 const MOON_R_M = 1737400;
@@ -150,11 +151,11 @@ export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pol
   return (
     <group>
       <mesh geometry={geom} raycast={() => null}>
-        <meshStandardMaterial map={color} normalMap={normal} normalScale={new THREE.Vector2(0.9, 0.9)} roughness={0.96} metalness={0} side={THREE.DoubleSide} />
+        <meshStandardMaterial ref={holeMaterial} map={color} normalMap={normal} normalScale={new THREE.Vector2(0.9, 0.9)} roughness={0.96} metalness={0} side={THREE.DoubleSide} />
       </mesh>
       {overlay && (
         <mesh geometry={geom} raycast={() => null} renderOrder={2}>
-          <meshBasicMaterial map={overlay} transparent opacity={0.8} depthWrite={false} polygonOffset polygonOffsetFactor={-2} side={THREE.DoubleSide} toneMapped={false} />
+          <meshBasicMaterial ref={holeMaterial} map={overlay} transparent opacity={0.8} depthWrite={false} polygonOffset polygonOffsetFactor={-2} side={THREE.DoubleSide} toneMapped={false} />
         </mesh>
       )}
     </group>

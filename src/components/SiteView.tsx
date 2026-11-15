@@ -1,11 +1,13 @@
 "use client";
 
-import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
+import { Html, Line } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { api } from "@/lib/api";
 import { sunVectorLocal } from "@/lib/geo";
+import { toWorld } from "@/lib/moonFrame";
+import { HOLE, KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
 import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
 import type { AISiteMap, Evaluation, LandingZone, RegionAnalysis, TerrainPatch } from "@/lib/types";
 import { seqColor } from "./ai/palette";
@@ -166,36 +168,19 @@ function ZoneMarker({ z, ellipse, y, primary, active, onClick, scale }: { z: Lan
   );
 }
 
-/** Frame the whole region from above its highest terrain, looking at its mid height
- *  (terrain heights are relative to the region centre, so the centre alone says little). */
-function FrameCamera({ size, t }: { size: number; t: TerrainPatch }) {
-  const { camera, invalidate } = useThree();
-  const { top, mid } = useMemo(() => {
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const h of t.heights) {
-      if (h < lo) lo = h;
-      if (h > hi) hi = h;
-    }
-    return { top: (hi * V_EXAG) / 1000, mid: ((lo + hi) / 2) * (V_EXAG / 1000) };
-  }, [t]);
-  useEffect(() => {
-    camera.position.set(size * 0.12, top + size * 0.7, size * 0.62);
-    camera.lookAt(0, mid, 0);
-    invalidate();
-  }, [camera, size, top, mid, invalidate]);
-  return null;
-}
-
-function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis }) {
-  const real = useStore((s) => s.realLighting);
-  const focusZone = useStore((s) => s.focusZone);
-  const setFocusZone = useStore((s) => s.setFocusZone);
+function sunOf(ev: Evaluation, real: boolean) {
   const sunF = ev.factors.find((f) => f.key === "sunlight");
   const az = Number(sunF?.details.sun_azimuth_deg ?? 90);
   const el = Number(sunF?.details.sun_elevation_deg ?? 20);
   // Real light: the true Sun direction (grazing at the poles). Otherwise a high, readable light.
-  const sunDir = real ? sunVectorLocal(az, Math.max(el, 1.5)) : sunVectorLocal(az, 45);
+  return { el, dir: real ? sunVectorLocal(az, Math.max(el, 1.5)) : sunVectorLocal(az, 45) };
+}
+
+function Scene({ t, ev, aiMap, region, frame }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis; frame: SiteFrame }) {
+  const real = useStore((s) => s.realLighting);
+  const focusZone = useStore((s) => s.focusZone);
+  const setFocusZone = useStore((s) => s.setFocusZone);
+  const { el, dir: sunDir } = sunOf(ev, real);
   const earthF = ev.factors.find((f) => f.key === "earth");
   const eAz = Number(earthF?.details.earth_azimuth_deg ?? 0);
   const eEl = Number(earthF?.details.earth_elevation_deg ?? 10);
@@ -207,25 +192,7 @@ function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMa
   const z1 = zones[0];
 
   return (
-    <>
-      <color attach="background" args={["#010208"]} />
-      <Stars radius={size * 6} depth={size * 3} count={3000} factor={3} fade />
-      <FrameCamera size={size} t={t} />
-      <directionalLight
-        position={sunDir.clone().multiplyScalar(size * 2)}
-        intensity={real ? (el > -1 ? 3.2 : 0.5) : 2.2}
-        color="#fff6e8"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-size}
-        shadow-camera-right={size}
-        shadow-camera-top={size}
-        shadow-camera-bottom={-size}
-        shadow-camera-near={0.1}
-        shadow-camera-far={size * 6}
-        shadow-bias={-0.0005}
-      />
-      <hemisphereLight args={["#c7d2fe", "#1a1a22", real ? 0.55 : 0.9]} />
+    <group matrix={frame.matrix} matrixAutoUpdate={false}>
       <TerrainMesh t={t} slopeTint aiMap={aiMap} />
 
       {region?.available && <RegionOutline t={t} half={region.half_size_m} y={yAt} />}
@@ -266,12 +233,11 @@ function Scene({ t, ev, aiMap, region }: { t: TerrainPatch; ev: Evaluation; aiMa
         <div className="whitespace-nowrap rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] text-amber-200">☀ Sun {el.toFixed(1)}°</div>
       </Html>
 
-      <OrbitControls target={[0, y0, 0]} maxPolarAngle={Math.PI / 2.05} minDistance={size * 0.08} maxDistance={size * 2.5} enableDamping />
-    </>
+    </group>
   );
 }
 
-export default function SiteView() {
+export function SiteLayer() {
   const site = useSelected();
   const ev = useEval(site?.id);
   const region = useRegion(site?.id);
@@ -279,6 +245,8 @@ export default function SiteView() {
   const [patch, setPatch] = useState<TerrainPatch | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const half = site ? halfSizeOf(site) : DEFAULT_HALF_SIZE;
+  const frame = useSiteFrame(site);
+  const invalidate = useThree((s) => s.invalidate);
 
   const aiMap = useMemo<AISiteMap | null>(
     () => (showAiMap && region?.available ? { available: true, half_size_m: region.half_size_m, cells: region.cells, success: region.success, touchdown: region.touchdown } : null),
@@ -295,7 +263,7 @@ export default function SiteView() {
     setPatch(null);
     setErr(null);
     api
-      .terrain(site.lat, site.lon, Math.max(2000, half * 1.12), 201)
+      .terrain(site.lat, site.lon, patchHalfM(site), 201)
       .then((p) => live && setPatch(p))
       .catch((e) => live && setErr(String(e)));
     return () => {
@@ -307,6 +275,60 @@ export default function SiteView() {
     useStore.setState({ siteStatus: !site ? "Select a candidate to inspect the site" : err ? `Terrain error: ${err}` : !ev || !patch ? "Loading terrain…" : null });
   }, [site, ev, patch, err]);
 
-  if (!site || !ev || !patch) return null;
-  return <Scene t={patch} ev={ev} aiMap={aiMap} region={region} />;
+  // cut the globe open where the detailed patch sits, once it is there to fill the hole
+  useEffect(() => {
+    if (!frame || !patch) return;
+    HOLE.uHoleC.value.copy(frame.center);
+    HOLE.uHoleE.value.copy(frame.east);
+    HOLE.uHoleN.value.copy(frame.north);
+    HOLE.uHoleHalf.value = (patch.half_size_m / 1000) * KM * 0.985;
+    HOLE.uHoleOn.value = 1;
+    invalidate();
+    return () => {
+      HOLE.uHoleOn.value = 0;
+      invalidate();
+    };
+  }, [frame, patch, invalidate]);
+
+  if (!site || !ev || !patch || !frame) return null;
+  return <Scene t={patch} ev={ev} aiMap={aiMap} region={region} frame={frame} />;
+}
+
+/** The site's Sun (world space), casting terrain shadows over the patch. */
+export function SiteSun() {
+  const site = useSelected();
+  const ev = useEval(site?.id);
+  const real = useStore((s) => s.realLighting);
+  const frame = useSiteFrame(site);
+  const target = useMemo(() => new THREE.Object3D(), []);
+  if (!site || !frame) return <ambientLight intensity={0.25} color="#9db4ff" />;
+  const size = ((2 * patchHalfM(site)) / 1000) * KM;
+  const sun = ev ? sunOf(ev, real) : { el: 20, dir: sunVectorLocal(90, 45) };
+  const at = toWorld(frame.center);
+  const dirWorld = toWorld(sun.dir.clone().applyMatrix4(new THREE.Matrix4().extractRotation(frame.matrix)));
+  target.position.copy(at);
+  target.updateMatrixWorld();
+  return (
+    <>
+      <primitive object={target} />
+      <directionalLight
+        target={target}
+        position={at.clone().addScaledVector(dirWorld, size * 2)}
+        intensity={real ? (sun.el > -1 ? 3.2 : 0.5) : 2.4}
+        color="#fff6e8"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-size}
+        shadow-camera-right={size}
+        shadow-camera-top={size}
+        shadow-camera-bottom={-size}
+        shadow-camera-near={size * 0.05}
+        shadow-camera-far={size * 6}
+        shadow-bias={-0.0005}
+      />
+      {/* sky fill from the site's zenith (stands in for the old hemisphere light) */}
+      <directionalLight position={at.clone().addScaledVector(toWorld(frame.up), size * 2)} target={target} intensity={real ? 0.7 : 1.1} color="#c7d2fe" />
+      <ambientLight intensity={real ? 0.25 : 0.4} color="#c7d2fe" />
+    </>
+  );
 }

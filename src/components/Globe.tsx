@@ -9,10 +9,12 @@ import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
 import { latLonToVec3, vec3ToLatLon } from "@/lib/geo";
 import { DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION } from "@/lib/heights";
 import { MOON_Q, toLocal, toWorld } from "@/lib/moonFrame";
+import { holeMaterial, KM, patchHalfM, useSiteFrame } from "@/lib/siteFrame";
 import { evalKey, useStore } from "@/lib/store";
 import { VERDICT } from "@/lib/ui";
 import RegionLayer from "./map/RegionLayer";
 import PolarCap, { CAP_EDGE_LAT, type CapMeta } from "./PolarCap";
+import { SiteLayer, SiteSun } from "./SiteView";
 
 export interface TextureMeta {
   caps?: Record<string, CapMeta>;
@@ -56,7 +58,7 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
     texture("moon_height_2k.png"),
     texture("hazard.png"),
   ]);
-  const showHazard = useStore((s) => s.showHazard);
+  const showHazard = useStore((s) => s.showHazard && s.view === "globe");
   const showAiMap = useStore((s) => s.showAiMap);
   const aiReady = useStore((s) => Boolean(s.modelCard?.success_model));
   const landingTime = useStore((s) => s.landingTime);
@@ -98,6 +100,7 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
     <group>
       <mesh geometry={band} raycast={() => null}>
         <meshStandardMaterial
+          ref={holeMaterial}
           map={color}
           normalMap={normal}
           normalScale={normalScale}
@@ -274,14 +277,23 @@ function SiteMarkers() {
   );
 }
 
+type Goal = { pos: THREE.Vector3; quat: THREE.Quaternion; target: THREE.Vector3; up: THREE.Vector3; mode: "globe" | "site"; size: number };
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
 function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   const selected = useStore((s) => s.sites.find((x) => x.id === s.selectedId));
+  const view = useStore((s) => s.view);
   const sun = useStore((s) => s.sun);
   const preset = useStore((s) => s.cameraPreset);
+  const frame = useSiteFrame(selected);
   const framed = useRef(false);
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const target = useRef<THREE.Vector3 | null>(null);
+  // a perspective change between the globe and the site close-up (camera position, look and up)
+  const goal = useRef<Goal | null>(null);
+  const mode = useRef<"globe" | "site">("globe");
   const { camera, invalidate } = useThree();
+  const globe = view === "globe";
 
   // First view: the sunlit south-polar region (where the Artemis candidates are)
   useEffect(() => {
@@ -292,30 +304,101 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   }, [sun, selected, invalidate]);
 
   useEffect(() => {
-    if (preset.nonce === 0) return;
+    if (preset.nonce === 0 || !globe) return;
     const lon = sun?.sun_lon ?? 0;
     if (preset.kind === "moon") target.current = toWorld(latLonToVec3(-30, lon - 25, 3.2));
     else if (preset.kind === "pole") target.current = toWorld(latLonToVec3(-89.0, lon - 15, 1.45));
     else if (selected) target.current = toWorld(latLonToVec3(selected.lat, selected.lon, 1.09));
     invalidate();
-  }, [preset, sun, selected, invalidate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || !globe || mode.current === "site") return;
     target.current = toWorld(latLonToVec3(selected.lat, selected.lon, 1.09));
     invalidate();
-  }, [selected, invalidate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   useEffect(() => {
-    if (!flyTo) return;
+    if (!flyTo || !globe) return;
     const d = Math.max(1.15, camera.position.length() * 0.7);
     target.current = flyTo.clone().normalize().multiplyScalar(d);
     invalidate();
-  }, [flyTo, camera, invalidate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flyTo]);
 
-  // Fly along the sphere (direction slerp + distance lerp) so the camera never cuts through the Moon
-  useFrame(() => {
+  // Globe ⇄ site: tilt down onto the site's terrain, or pull back up to the globe above it
+  useEffect(() => {
+    target.current = null;
+    const look = (pos: THREE.Vector3, at: THREE.Vector3, up: THREE.Vector3) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(pos, at, up));
+    if (view === "site" && frame && selected) {
+      const s = (2 * patchHalfM(selected)) / 1000; // patch size, km
+      const w = (v: THREE.Vector3) => toWorld(v.applyMatrix4(frame.matrix));
+      const pos = w(new THREE.Vector3(s * 0.15, s * 1.05, s * 0.95));
+      const at = w(new THREE.Vector3(0, 0, 0));
+      const up = toWorld(frame.up);
+      goal.current = { pos, quat: look(pos, at, up), target: at, up, mode: "site", size: s * KM };
+    } else if (view === "globe" && mode.current === "site") {
+      const pos = selected ? toWorld(latLonToVec3(selected.lat, selected.lon, 1.09)) : camera.position.clone().normalize().multiplyScalar(1.6);
+      const at = new THREE.Vector3();
+      goal.current = { pos, quat: look(pos, at, WORLD_UP), target: at, up: WORLD_UP.clone(), mode: "globe", size: 1 };
+    }
+    invalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, frame]);
+
+  const limits = (m: "globe" | "site", size: number) => {
     const c = controls.current;
+    if (!c) return;
+    if (m === "site") {
+      c.minDistance = size * 0.06;
+      c.maxDistance = size * 4;
+      c.maxPolarAngle = Math.PI / 2.05;
+      c.rotateSpeed = 0.6;
+      c.zoomSpeed = 0.8;
+    } else {
+      c.minDistance = 1.03;
+      c.maxDistance = 8;
+      c.maxPolarAngle = Math.PI;
+    }
+  };
+
+  useFrame((_, dt) => {
+    const c = controls.current;
+    const g = goal.current;
+    if (g) {
+      if (c) {
+        c.enabled = false;
+        c.minDistance = 0;
+        c.maxDistance = 100;
+        c.maxPolarAngle = Math.PI;
+      }
+      const k = 1 - Math.exp(-Math.min(dt, 0.05) * 4.5);
+      // move around the Moon's centre (never through it), then ease the look and up direction
+      const d0 = camera.position.length();
+      const d1 = g.pos.length();
+      const dir = camera.position.clone().normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(dir, g.pos.clone().normalize());
+      dir.applyQuaternion(new THREE.Quaternion().slerp(q, k));
+      camera.position.copy(dir.multiplyScalar(d0 + (d1 - d0) * k));
+      camera.quaternion.slerp(g.quat, k);
+      if (camera.position.distanceTo(g.pos) < g.size * 0.004 && camera.quaternion.angleTo(g.quat) < 0.002) {
+        camera.position.copy(g.pos);
+        camera.up.copy(g.up);
+        mode.current = g.mode;
+        goal.current = null;
+        if (c) {
+          c.target.copy(g.target);
+          limits(g.mode, g.size);
+          c.enabled = true;
+          c.update();
+        } else camera.quaternion.copy(g.quat);
+      }
+      invalidate();
+      return;
+    }
+    if (mode.current === "site") return;
     const d0 = camera.position.length();
     if (c) {
       // slow, precise rotation close to the surface; faster when far away
@@ -350,17 +433,22 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
 
 export default function Globe() {
   const [flyTo, setFlyTo] = useState<THREE.Vector3 | null>(null);
+  const site = useStore((s) => s.view === "site");
   return (
     <>
       <color attach="background" args={["#02030a"]} />
       <Stars radius={120} depth={60} count={3000} factor={4} saturation={0} fade speed={0} />
-      <SunLight />
+      {site ? <SiteSun /> : <SunLight />}
       {/* the Moon is drawn rotated so the south pole faces the camera (see lib/moonFrame.ts) */}
       <group quaternion={MOON_Q}>
         <Moon onFlyTo={setFlyTo} />
         <Earth />
-        <RegionLayer />
-        <SiteMarkers />
+        {site ? <SiteLayer /> : (
+          <>
+            <RegionLayer />
+            <SiteMarkers />
+          </>
+        )}
       </group>
       <CameraRig flyTo={flyTo} />
     </>

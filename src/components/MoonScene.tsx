@@ -4,9 +4,7 @@ import { AdaptiveDpr, useProgress } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import { Suspense, useEffect } from "react";
 import * as THREE from "three";
-import { useStore } from "@/lib/store";
 import Globe from "./Globe";
-import SiteView from "./SiteView";
 
 function Loading() {
   const { active, progress } = useProgress();
@@ -35,22 +33,23 @@ function RedrawOnResolutionChange() {
 }
 
 export default function MoonScene() {
-  const view = useStore((s) => s.view);
   return (
     <>
     <Canvas
-      key={view}
-      shadows={view === "site"}
+      shadows
       frameloop="demand"
       dpr={[1, 1.5]}
       performance={{ min: 0.5, debounce: 250 }}
-      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
-      camera={view === "globe" ? { position: [1.2, -2.2, 2.4], fov: 40, near: 0.001, far: 1000 } : { position: [3.5, 3.2, 5.5], fov: 45, near: 0.01, far: 500 }}
+      // log depth: the same camera goes from a whole-Moon view down to a few km above the site
+      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, logarithmicDepthBuffer: true }}
+      camera={{ position: [1.2, -2.2, 2.4], fov: 42, near: 0.00001, far: 1000 }}
     >
       {/* render at lower resolution while the camera moves, full resolution when it stops */}
       <AdaptiveDpr pixelated={false} />
       <RedrawOnResolutionChange />
-      <Suspense fallback={null}>{view === "globe" ? <Globe /> : <SiteView />}</Suspense>
+      <Suspense fallback={null}>
+        <Globe />
+      </Suspense>
     </Canvas>
     <Loading />
     </>
