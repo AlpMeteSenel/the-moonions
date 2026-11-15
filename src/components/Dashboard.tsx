@@ -12,6 +12,7 @@ import ModelCardModal from "./ai/ModelCardModal";
 import CandidateAssessment from "./ai/CandidateAssessment";
 import CandidateRail from "./CandidateRail";
 import MapHud from "./map/MapHud";
+import PoseBadge from "./map/PoseBadge";
 import TimeScrubber from "./map/TimeScrubber";
 import ComparePanel from "./ComparePanel";
 import MissionControl from "./crew/MissionControl";
@@ -117,6 +118,7 @@ export default function Dashboard() {
           <div className="relative min-h-0 flex-1">
             <MoonScene />
             <MapHud />
+            <PoseBadge />
             <SiteHint />
             <TimeScrubber />
             <StatusLine health={health} error={error} />
