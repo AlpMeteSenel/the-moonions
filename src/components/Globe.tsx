@@ -2,7 +2,7 @@
 
 import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useLoader, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
 import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
@@ -49,16 +49,25 @@ function useBandGeometry(hasCaps: boolean) {
   }, [hasCaps]);
 }
 
+/** Global steepness overlay: downloaded only when the layer is switched on (it is the largest texture). */
+function HazardLayer() {
+  const hazard = useLoader(HeaderTextureLoader, texture("hazard.png"));
+  useMemo(() => {
+    hazard.wrapS = THREE.RepeatWrapping;
+  }, [hazard]);
+  return (
+    <mesh raycast={() => null}>
+      <sphereGeometry args={[1.004, 192, 96]} />
+      <meshBasicMaterial map={hazard} transparent opacity={0.75} depthWrite={false} />
+    </mesh>
+  );
+}
+
 function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   const meta = useTextureMeta();
   const caps = meta?.caps;
   const band = useBandGeometry(Boolean(caps?.cap_s));
-  const [color, normal, height, hazard] = useLoader(HeaderTextureLoader, [
-    texture("moon_color_4k.jpg"),
-    texture("moon_normal_4k.jpg"),
-    texture("moon_height_2k.png"),
-    texture("hazard.png"),
-  ]);
+  const [color, normal, height] = useLoader(HeaderTextureLoader, [texture("moon_color_4k.jpg"), texture("moon_normal_4k.jpg"), texture("moon_height_2k.png")]);
   const showHazard = useStore((s) => s.showHazard && s.view === "globe");
   const showAiMap = useStore((s) => s.showAiMap);
   const aiReady = useStore((s) => Boolean(s.modelCard?.success_model));
@@ -72,8 +81,8 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   useMemo(() => {
     color.colorSpace = THREE.SRGBColorSpace;
     color.anisotropy = 4;
-    for (const t of [color, normal, height, hazard]) t.wrapS = THREE.RepeatWrapping;
-  }, [color, normal, height, hazard]);
+    for (const t of [color, normal, height]) t.wrapS = THREE.RepeatWrapping;
+  }, [color, normal, height]);
 
   const normalScale = useMemo(() => new THREE.Vector2(1.4, 1.4), []);
   const dispScale = DISP_SCALE;
@@ -116,10 +125,9 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
       {caps &&
         (["s", "n"] as const).map((pole) => caps[`cap_${pole}`] && <PolarCap key={pole} pole={pole} meta={caps[`cap_${pole}`]} exaggeration={RELIEF_EXAGGERATION} overlayUrl={pole === "s" ? aiOverlay : null} />)}
       {showHazard && (
-        <mesh raycast={() => null}>
-          <sphereGeometry args={[1.004, 192, 96]} />
-          <meshBasicMaterial map={hazard} transparent opacity={0.75} depthWrite={false} />
-        </mesh>
+        <Suspense fallback={null}>
+          <HazardLayer />
+        </Suspense>
       )}
       {/* interaction proxy */}
       <mesh onClick={onClick} onDoubleClick={onDouble} onPointerMove={onMove} onPointerOut={() => setHover(null)}>
