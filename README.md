@@ -8,7 +8,7 @@ Backend: [`the-moonions-backend`](https://github.com/AlpMeteSenel/the-moonions-b
 
 ```bash
 pnpm install
-cp .env.example .env.local      # NEXT_PUBLIC_API_URL=http://localhost:8000
+cp .env.example .env.local      # NEXT_PUBLIC_API_URL=https://nasa.aliemre.senel.biz
 pnpm dev                        # http://localhost:3000
 ```
 

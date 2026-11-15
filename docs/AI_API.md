@@ -1,6 +1,6 @@
 # AI API contract (backend ↔ dashboard)
 
-Base URL: `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). All times ISO-8601 UTC.
+Base URL: `NEXT_PUBLIC_API_URL` (default `https://nasa.aliemre.senel.biz`). All times ISO-8601 UTC.
 Probabilities are 0..1. The backend implements these in `the-moonions-backend`.
 
 The AI = **mission-success model**: predicts P(landing mission succeeds) for a site + touchdown

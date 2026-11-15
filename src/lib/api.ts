@@ -1,7 +1,7 @@
 import { BACKEND_HEADERS } from "./net";
 import type { AIAssessment, AIPlan, AISiteMap, AITimeline, Conditions, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://nasa.aliemre.senel.biz";
 export const texture = (name: string) => `${API_URL}/static/textures/${name}`;
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
