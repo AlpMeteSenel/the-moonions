@@ -1,5 +1,5 @@
 import { BACKEND_HEADERS } from "./net";
-import type { AIAssessment, AIPlan, AISiteMap, AITimeline, Conditions, RegionAnalysis, RegionSummary, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
+import type { AIAssessment, AIPlan, AISiteMap, AITimeline, Conditions, RegionAnalysis, RegionRange, RegionSummary, RegionTimeline, Evaluation, Health, ModelCard, Profile, Proposal, Site, SunState, TerrainPatch, Timeline } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://nasa.aliemre.senel.biz";
 export const texture = (name: string) => `${API_URL}/static/textures/${name}`;
@@ -26,6 +26,8 @@ export const api = {
   conditions: (lat: number, lon: number, start: string, days = 14, mission_hours = 156) =>
     req<Conditions>(`/api/conditions?lat=${lat}&lon=${lon}&start=${encodeURIComponent(start)}&days=${days}&step_min=10&mission_hours=${mission_hours}`),
   sun: (time: string) => req<SunState>(`/api/sun?time=${encodeURIComponent(time)}`),
+  regionRange: (lat: number, lon: number, half_size_m: number, start: string, hours: number) =>
+    req<RegionRange>(`/api/regions/analyze-range?lat=${lat}&lon=${lon}&half_size_m=${half_size_m}&start=${encodeURIComponent(start)}&hours=${hours}`),
   sunTrack: (start: string, hours: number) => req<{ start: string; step_hours: number; points: [number, number, number, number][] }>(`/api/sun/track?start=${encodeURIComponent(start)}&hours=${hours}`),
   prewarm: (start: string, hours: number) => fetch(`${API_URL}/api/ai/prewarm?start=${encodeURIComponent(start)}&hours=${hours}`, { method: "POST", headers: BACKEND_HEADERS }).catch(() => undefined),
   evaluate: (lat: number, lon: number, o: EvalOptions, signal?: AbortSignal) =>

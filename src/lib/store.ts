@@ -119,6 +119,8 @@ interface State {
   setPlaySpeed: (h: number) => void;
   /** Advance playback by one frame (no full refresh; the AI map and region colours follow, throttled). */
   playStep: (hours: number) => void;
+  /** Fetch the selected region's analysis for the day block holding `iso` in one request (24 h). */
+  prefetchRange: (id: string, iso: string) => Promise<void>;
   loadProposals: () => Promise<void>;
   propose: (id: string, notes?: string) => Promise<Proposal | undefined>;
   decide: (pid: string, status: Proposal["status"], notes?: string) => Promise<void>;
@@ -180,6 +182,13 @@ export const evalKey = (id: string, s: Pick<State, "landingTime" | "profile" | "
 
 let timeTimer: ReturnType<typeof setTimeout> | null = null;
 let lastFrameFetch = 0;
+const rangeDone = new Set<string>();
+const BLOCK_H = 24;
+const blockStart = (iso: string) => {
+  const d = new Date(iso);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString();
+};
 
 /** Sun/Earth sub-points at a time from the track (linear, longitude unwrapped), or null outside it. */
 function sunAt(track: State["sunTrack"], iso: string): SunState | null {
@@ -299,6 +308,7 @@ export const useStore = create<State>((set, get) => ({
     if (selectedId) {
       void get().evaluate(selectedId);
       void get().assess(selectedId);
+      void get().prefetchRange(selectedId, get().landingTime);
       void get().loadRegion(selectedId);
       // the time track may have moved to a new month: fetch its timelines (cached ones are skipped)
       void get().loadAiTimeline(selectedId);
@@ -454,15 +464,63 @@ export const useStore = create<State>((set, get) => ({
     if (on) {
       if (timeTimer) clearTimeout(timeTimer);
       void api.prewarm(get().landingTime, 48);
+      const sel = get().selectedId;
+      if (sel) {
+        void get().prefetchRange(sel, get().landingTime);
+        void get().prefetchRange(sel, new Date(new Date(get().landingTime).getTime() + BLOCK_H * 3600e3).toISOString());
+      }
     } else get().fetchForTime();
   },
   setPlaySpeed: (h) => set({ playSpeed: h }),
+  prefetchRange: async (id, iso) => {
+    const s = get();
+    const site = s.sites.find((x) => x.id === id);
+    if (!site) return;
+    const half = halfSizeOf(site);
+    const start = blockStart(iso);
+    const key = `${id}|${half}|${start}`;
+    if (rangeDone.has(key)) return;
+    rangeDone.add(key);
+    try {
+      const r = await api.regionRange(site.lat, site.lon, half, start, BLOCK_H);
+      if (!r.available) return;
+      const add: Record<string, RegionAnalysis> = {};
+      for (const f of r.frames) {
+        const t = new Date(f.landing_time).toISOString();
+        add[regionKey(id, t, half)] = {
+          available: true,
+          lat: r.lat,
+          lon: r.lon,
+          half_size_m: r.half_size_m,
+          cells: r.cells,
+          resolution_m: r.resolution_m,
+          ellipse_radius_m: r.ellipse_radius_m,
+          landing_time: t,
+          touchdown: r.touchdown,
+          uncertainty: r.uncertainty,
+          success: f.success,
+          gate: f.gate,
+          stats: f.stats,
+          zones: f.zones,
+        } as RegionAnalysis;
+      }
+      // don't overwrite exact single-hour results already loaded
+      set({ regions: { ...add, ...get().regions } });
+    } catch {
+      rangeDone.delete(key);
+    }
+  },
   playStep: (hours) => {
     const t = new Date(get().landingTime).getTime() + hours * 3600e3;
     const iso = new Date(Math.round(t / 3600e3) * 3600e3).toISOString();
     const anchor = keepAnchor(iso, get().timeAnchor);
     set({ landingTime: iso, timeAnchor: anchor, sun: sunAt(get().sunTrack, iso) ?? get().sun });
     if (anchor !== get().sunTrackAnchor) void get().loadSunTrack();
+    const sel = get().selectedId;
+    if (sel) {
+      void get().prefetchRange(sel, iso);
+      void get().prefetchRange(sel, new Date(new Date(iso).getTime() + BLOCK_H * 3600e3).toISOString());
+    }
     // the AI map image and the region colours follow at most ~1x per second
     const now = Date.now();
     if (now - lastFrameFetch > 900) {

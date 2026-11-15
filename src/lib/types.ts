@@ -385,3 +385,17 @@ export interface Conditions {
     battery: number[];
   };
 }
+
+/** Region analysis for a block of hours: shared grid/touchdown, per-hour frames (timeline playback). */
+export interface RegionRange {
+  available: boolean;
+  lat: number;
+  lon: number;
+  half_size_m: number;
+  cells: number;
+  resolution_m: number;
+  ellipse_radius_m: number;
+  touchdown: number[];
+  uncertainty: number[];
+  frames: { landing_time: string; success: number[]; gate: number[]; stats: RegionAnalysis["stats"]; zones: RegionAnalysis["zones"] }[];
+}
