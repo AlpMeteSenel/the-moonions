@@ -43,7 +43,7 @@ function useHeightPixels(url: string) {
 }
 
 /** A polar-stereographic cap built from the LOLA 80 m polar DEM (no pole pinching). */
-function useOverlay(url: string | null | undefined) {
+export function useOverlay(url: string | null | undefined) {
   const [loaded, setLoaded] = useState<{ url: string; tex: THREE.Texture } | null>(null);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {

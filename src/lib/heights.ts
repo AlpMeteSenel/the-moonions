@@ -68,6 +68,12 @@ export interface Surface {
   rendered: (lat: number, lon: number) => number;
 }
 
+/** Height (m) of the drawn LOD tiles at a stereographic point, registered by PolarTiles. */
+let capHeight: ((pole: "s" | "n", x: number, y: number) => number | null) | null = null;
+export function setCapHeightProvider(fn: typeof capHeight) {
+  capHeight = fn;
+}
+
 let loading: Promise<Surface> | null = null;
 
 export function loadSurface(): Promise<Surface> {
@@ -132,6 +138,11 @@ export function loadSurface(): Promise<Surface> {
     };
     const rendered = (lat: number, lon: number) => {
       const u = dirOf(lat, lon);
+      if (Math.abs(lat) >= CAP_EDGE_LAT && capHeight) {
+        const { x, y } = capXY(lat, lon);
+        const h = capHeight(lat < 0 ? "s" : "n", x, y);
+        if (h !== null) return 1 + (h / MOON_R_M) * RELIEF_EXAGGERATION;
+      }
       if (Math.abs(lat) >= CAP_EDGE_LAT && hasCap(lat)) {
         // PolarCap grid: quad (i, j) → triangles (a, b, a+1) and (a+1, b, b+1), a = (i, j), b = (i+1, j)
         const south = lat < 0;

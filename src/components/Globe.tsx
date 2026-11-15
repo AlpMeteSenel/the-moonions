@@ -14,11 +14,29 @@ import { holeMaterial, KM, patchHalfM, useSiteFrame } from "@/lib/siteFrame";
 import { evalKey, halfSizeOf, useStore } from "@/lib/store";
 import { VERDICT } from "@/lib/ui";
 import RegionLayer from "./map/RegionLayer";
-import PolarCap, { type CapMeta } from "./PolarCap";
+import PolarCap, { type CapMeta, useOverlay } from "./PolarCap";
+import PolarTiles, { type PoleTiles } from "./PolarTiles";
 import { SiteLayer, SiteSun } from "./SiteView";
 
 export interface TextureMeta {
   caps?: Record<string, CapMeta>;
+}
+
+function useTilesInfo() {
+  const [info, setInfo] = useState<Record<string, PoleTiles> | null>(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/tiles/info`, { headers: BACKEND_HEADERS })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setInfo)
+      .catch(() => setInfo({}));
+  }, []);
+  return info;
+}
+
+/** LOD tiles for one cap, with the AI map draped on them. */
+function TiledCap({ pole, info, overlayUrl }: { pole: "s" | "n"; info: PoleTiles; overlayUrl: string | null }) {
+  const overlay = useOverlay(overlayUrl);
+  return <PolarTiles pole={pole} info={info} overlay={overlay} />;
 }
 
 function useTextureMeta() {
@@ -65,6 +83,7 @@ function HazardLayer() {
 
 function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   const meta = useTextureMeta();
+  const tilesInfo = useTilesInfo();
   const caps = meta?.caps;
   const band = useBandGeometry(Boolean(caps?.cap_s));
   const [color, normal, height] = useLoader(HeaderTextureLoader, [texture("moon_color_4k.jpg"), texture("moon_normal_4k.jpg"), texture("moon_height_2k.png")]);
@@ -123,7 +142,14 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
         />
       </mesh>
       {caps &&
-        (["s", "n"] as const).map((pole) => caps[`cap_${pole}`] && <PolarCap key={pole} pole={pole} meta={caps[`cap_${pole}`]} exaggeration={RELIEF_EXAGGERATION} overlayUrl={pole === "s" ? aiOverlay : null} />)}
+        tilesInfo &&
+        (["s", "n"] as const).map((pole) =>
+          tilesInfo[pole] ? (
+            <TiledCap key={pole} pole={pole} info={tilesInfo[pole]} overlayUrl={pole === "s" ? aiOverlay : null} />
+          ) : (
+            caps[`cap_${pole}`] && <PolarCap key={pole} pole={pole} meta={caps[`cap_${pole}`]} exaggeration={RELIEF_EXAGGERATION} overlayUrl={pole === "s" ? aiOverlay : null} />
+          ),
+        )}
       {showHazard && (
         <Suspense fallback={null}>
           <HazardLayer />
@@ -410,7 +436,7 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
       c.rotateSpeed = 0.6;
       c.zoomSpeed = 0.8;
     } else {
-      c.minDistance = 1.03;
+      c.minDistance = 1.012;
       c.maxDistance = 8;
       c.maxPolarAngle = Math.PI;
     }
@@ -476,7 +502,7 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
       regress
       enableDamping
       dampingFactor={0.1}
-      minDistance={1.03}
+      minDistance={1.012}
       maxDistance={8}
       onStart={() => (target.current = null)}
     />
