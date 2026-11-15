@@ -42,7 +42,7 @@ export function useSiteFrame(site: { lat: number; lon: number } | null | undefin
   const surface = useSurface();
   const lat = site?.lat;
   const lon = site?.lon;
-  return useMemo(() => (lat === undefined || lon === undefined ? null : siteFrame(lat, lon, surface?.radius(lat, lon) ?? 1)), [lat, lon, surface]);
+  return useMemo(() => (lat === undefined || lon === undefined ? null : siteFrame(lat, lon, surface?.rendered(lat, lon) ?? 1)), [lat, lon, surface]);
 }
 
 /** Uniforms shared by every globe surface material: a square hole where the site patch sits. */

@@ -5,9 +5,10 @@ import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { api } from "@/lib/api";
-import { sunVectorLocal } from "@/lib/geo";
+import { offsetLatLon, sunVectorLocal } from "@/lib/geo";
+import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
-import { HOLE, KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
+import { HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
 import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
 import type { AISiteMap, Evaluation, LandingZone, RegionAnalysis, TerrainPatch } from "@/lib/types";
 import { seqColor } from "./ai/palette";
@@ -89,10 +90,48 @@ function TerrainMesh({ t, slopeTint, aiMap }: { t: TerrainPatch; slopeTint: bool
     g.computeVertexNormals();
     return g;
   }, [t, slopeTint, aiMap]);
+  // Skirt: a wall hanging from the patch edge down below any nearby globe surface, so the seam
+  // between the detailed patch and the (coarser) globe around its hole never shows a gap.
+  const skirt = useMemo(() => {
+    const n = t.size;
+    const half = t.half_size_m / 1000;
+    const step = (2 * half) / (n - 1);
+    let lo = Infinity;
+    for (const h of t.heights) lo = Math.min(lo, h);
+    const bottom = ((lo - 3000) * V_EXAG) / 1000;
+    // edge vertex indices, walking the border once around
+    const ring: number[] = [];
+    for (let c = 0; c < n; c++) ring.push(c);
+    for (let r = 1; r < n; r++) ring.push(r * n + n - 1);
+    for (let c = n - 2; c >= 0; c--) ring.push((n - 1) * n + c);
+    for (let r = n - 2; r > 0; r--) ring.push(r * n);
+    ring.push(0);
+    const pos = new Float32Array(ring.length * 2 * 3);
+    ring.forEach((i, k) => {
+      const x = (i % n) * step - half;
+      const z = Math.floor(i / n) * step - half;
+      pos.set([x, (t.heights[i] * V_EXAG) / 1000, z, x, bottom, z], k * 6);
+    });
+    const idx: number[] = [];
+    for (let k = 0; k < ring.length - 1; k++) {
+      const a = 2 * k;
+      idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }, [t]);
   return (
-    <mesh geometry={geom} receiveShadow castShadow>
-      <meshStandardMaterial vertexColors roughness={0.95} metalness={0} flatShading={false} />
-    </mesh>
+    <>
+      <mesh geometry={geom} receiveShadow castShadow>
+        <meshStandardMaterial vertexColors roughness={0.95} metalness={0} flatShading={false} />
+      </mesh>
+      <mesh geometry={skirt}>
+        <meshStandardMaterial color="#5b5f66" roughness={1} metalness={0} side={THREE.DoubleSide} />
+      </mesh>
+    </>
   );
 }
 
@@ -166,6 +205,38 @@ function ZoneMarker({ z, ellipse, y, primary, active, onClick, scale }: { z: Lan
       <Pin pos={[0, y, 0]} color={color} label={z.id} sub={`${Math.round(z.mean_success * 100)}% here`} big={primary} active={active} onClick={onClick} scale={scale} />
     </group>
   );
+}
+
+/**
+ * Ease the patch's outer margin into the globe surface as it is actually drawn (the globe mesh is
+ * far coarser than the patch), so the patch meets the globe without a step or a gap. The region
+ * itself (inside the margin) keeps its true heights.
+ */
+function blendIntoGlobe(t: TerrainPatch, site: { lat: number; lon: number }, frame: SiteFrame, surface: Surface, regionHalfM: number): TerrainPatch {
+  const n = t.size;
+  const half = t.half_size_m;
+  const step = (2 * half) / (n - 1);
+  const margin = Math.max(half - regionHalfM, half * 0.08);
+  const rC = frame.center.length();
+  const R = MOON_R_KM * 1000;
+  const out = new Float32Array(t.heights.length);
+  for (let i = 0; i < out.length; i++) {
+    const east = (i % n) * step - half;
+    const north = half - Math.floor(i / n) * step;
+    const e = half - Math.max(Math.abs(east), Math.abs(north)); // distance to the patch edge
+    if (e >= margin) {
+      out[i] = t.heights[i];
+      continue;
+    }
+    const ll = offsetLatLon(site.lat, site.lon, east, north);
+    const a = Math.hypot(east, north) / R;
+    // the globe's height above the patch's tangent plane, back in un-exaggerated metres
+    const g = ((surface.rendered(ll.lat, ll.lon) * Math.cos(a) - rC) * R) / V_EXAG;
+    const x = Math.max(0, e / margin);
+    const w = x * x * (3 - 2 * x);
+    out[i] = g + (t.heights[i] - g) * w;
+  }
+  return { ...t, heights: Array.from(out) };
 }
 
 function sunOf(ev: Evaluation, real: boolean) {
@@ -246,7 +317,9 @@ export function SiteLayer() {
   const [err, setErr] = useState<string | null>(null);
   const half = site ? halfSizeOf(site) : DEFAULT_HALF_SIZE;
   const frame = useSiteFrame(site);
+  const surface = useSurface();
   const invalidate = useThree((s) => s.invalidate);
+  const fitted = useMemo(() => (patch && frame && surface && site ? blendIntoGlobe(patch, site, frame, surface, half) : null), [patch, frame, surface, site, half]);
 
   const aiMap = useMemo<AISiteMap | null>(
     () => (showAiMap && region?.available ? { available: true, half_size_m: region.half_size_m, cells: region.cells, success: region.success, touchdown: region.touchdown } : null),
@@ -277,21 +350,21 @@ export function SiteLayer() {
 
   // cut the globe open where the detailed patch sits, once it is there to fill the hole
   useEffect(() => {
-    if (!frame || !patch) return;
+    if (!frame || !fitted) return;
     HOLE.uHoleC.value.copy(frame.center);
     HOLE.uHoleE.value.copy(frame.east);
     HOLE.uHoleN.value.copy(frame.north);
-    HOLE.uHoleHalf.value = (patch.half_size_m / 1000) * KM * 0.985;
+    HOLE.uHoleHalf.value = (fitted.half_size_m / 1000) * KM * 0.985;
     HOLE.uHoleOn.value = 1;
     invalidate();
     return () => {
       HOLE.uHoleOn.value = 0;
       invalidate();
     };
-  }, [frame, patch, invalidate]);
+  }, [frame, fitted, invalidate]);
 
-  if (!site || !ev || !patch || !frame) return null;
-  return <Scene t={patch} ev={ev} aiMap={aiMap} region={region} frame={frame} />;
+  if (!site || !ev || !fitted || !frame) return null;
+  return <Scene t={fitted} ev={ev} aiMap={aiMap} region={region} frame={frame} />;
 }
 
 /** The site's Sun (world space), casting terrain shadows over the patch. */

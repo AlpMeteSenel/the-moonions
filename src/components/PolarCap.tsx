@@ -7,6 +7,7 @@ import { texture } from "@/lib/api";
 import { HeaderTextureLoader, blobUrl } from "@/lib/net";
 import { latLonToVec3 } from "@/lib/geo";
 import { holeMaterial } from "@/lib/siteFrame";
+import { CAP_GRID } from "@/lib/heights";
 
 export const CAP_EDGE_LAT = 80; // caps cover |lat| >= 80, the base sphere stops just past it
 const MOON_R_M = 1737400;
@@ -85,7 +86,7 @@ export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pol
     if (!px) return null;
     // Uniform grid in the stereographic plane: evenly sized triangles everywhere, no pole
     // singularity (a ring/fan mesh produces radial "starburst" shading at the pole).
-    const N = 220;
+    const N = CAP_GRID;
     const sign = pole === "s" ? -1 : 1;
     const half = meta.half_size_m;
     const rhoOf = (absLat: number) => 2 * MOON_R_M * Math.tan(((90 - absLat) * Math.PI) / 360);

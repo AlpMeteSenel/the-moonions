@@ -7,13 +7,13 @@ import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
 import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
 import { latLonToVec3, vec3ToLatLon } from "@/lib/geo";
-import { DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION } from "@/lib/heights";
+import { BAND_SEGMENTS, bandEdgeLat, DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION } from "@/lib/heights";
 import { MOON_Q, toLocal, toWorld } from "@/lib/moonFrame";
 import { holeMaterial, KM, patchHalfM, useSiteFrame } from "@/lib/siteFrame";
 import { evalKey, useStore } from "@/lib/store";
 import { VERDICT } from "@/lib/ui";
 import RegionLayer from "./map/RegionLayer";
-import PolarCap, { CAP_EDGE_LAT, type CapMeta } from "./PolarCap";
+import PolarCap, { type CapMeta } from "./PolarCap";
 import { SiteLayer, SiteSun } from "./SiteView";
 
 export interface TextureMeta {
@@ -34,9 +34,9 @@ function useTextureMeta() {
 /** Sphere band between the polar caps with UVs that still span the full equirectangular map. */
 function useBandGeometry(hasCaps: boolean) {
   return useMemo(() => {
-    const edge = hasCaps ? CAP_EDGE_LAT + 0.05 : 90;
+    const edge = bandEdgeLat(hasCaps);
     const t0 = ((90 - edge) * Math.PI) / 180;
-    const g = new THREE.SphereGeometry(1, 384, 192, 0, Math.PI * 2, t0, Math.PI - 2 * t0);
+    const g = new THREE.SphereGeometry(1, BAND_SEGMENTS[0], BAND_SEGMENTS[1], 0, Math.PI * 2, t0, Math.PI - 2 * t0);
     const pos = g.attributes.position as THREE.BufferAttribute;
     const uv = g.attributes.uv as THREE.BufferAttribute;
     for (let i = 0; i < pos.count; i++) {
