@@ -1,11 +1,25 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TRACK_DAYS, useRegionTimeline, useSelected, useStore } from "@/lib/store";
 import { fmtTime } from "@/lib/ui";
 
 const DAY = 86400e3;
+const SPEEDS = [1, 6, 24]; // hours of mission time per second
+
+/** Steps the touchdown time forward while playing: lighting moves every frame, data follows. */
+function usePlayback() {
+  const playing = useStore((s) => s.playing);
+  const speed = useStore((s) => s.playSpeed);
+  useEffect(() => {
+    if (!playing) return;
+    const tickMs = Math.max(40, 1000 / speed);
+    const hoursPerTick = Math.max(1, Math.round((speed * tickMs) / 1000));
+    const id = setInterval(() => useStore.getState().playStep(hoursPerTick), tickMs);
+    return () => clearInterval(id);
+  }, [playing, speed]);
+}
 const SPAN_DAYS = TRACK_DAYS;
 
 function roundHour(t: number) {
@@ -16,6 +30,11 @@ function roundHour(t: number) {
 export default function TimeScrubber() {
   const landingTime = useStore((s) => s.landingTime);
   const setLandingTime = useStore((s) => s.setLandingTime);
+  const playing = useStore((s) => s.playing);
+  const playSpeed = useStore((s) => s.playSpeed);
+  const setPlaying = useStore((s) => s.setPlaying);
+  const setPlaySpeed = useStore((s) => s.setPlaySpeed);
+  usePlayback();
   const site = useSelected();
   const tl = useRegionTimeline(site?.id);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,20 +68,39 @@ export default function TimeScrubber() {
     const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
     return roundHour(t0 + f * (t1 - t0));
   };
+  // dragging moves the time live (lighting is local; data loads once the time settles)
+  const live = (t: number) => {
+    setPreview(t);
+    if (Math.abs(t - new Date(useStore.getState().landingTime).getTime()) >= 3600e3) setLandingTime(new Date(t).toISOString());
+  };
   const commit = (t: number) => {
+    live(t);
     setPreview(null);
-    if (Math.abs(t - new Date(landingTime).getTime()) >= 3600e3) setLandingTime(new Date(t).toISOString());
   };
   const step = (h: number) => setLandingTime(new Date(roundHour(new Date(landingTime).getTime() + h * 3600e3)).toISOString());
 
   return (
     <div className="absolute inset-x-3 bottom-3 z-40 rounded-xl border border-white/10 bg-slate-950/85 px-3 pb-2 pt-2 shadow-xl">
       <div className="mb-1 flex items-center gap-2 text-[10.5px]">
+        <button
+          onClick={() => setPlaying(!playing)}
+          className={`flex h-6 w-6 items-center justify-center rounded-full ${playing ? "bg-sky-400 text-slate-950" : "bg-white/10 text-white hover:bg-white/20"}`}
+          title={playing ? "Pause" : "Play: watch sunlight, the AI map and the regions change over time"}
+        >
+          {playing ? <Pause size={12} /> : <Play size={12} className="translate-x-px" />}
+        </button>
+        <span className="flex shrink-0 rounded-md border border-white/10 p-px" title="Playback speed: mission time per second">
+          {SPEEDS.map((h) => (
+            <button key={h} onClick={() => setPlaySpeed(h)} className={`whitespace-nowrap rounded px-1.5 py-px tabular-nums ${playSpeed === h ? "bg-white/15 text-white" : "text-white/45 hover:text-white"}`} title={`${h} h per second`}>
+              {h === 24 ? "1d" : `${h}h`}
+            </button>
+          ))}
+        </span>
         <span className="font-semibold uppercase tracking-[0.14em] text-white/45">Time</span>
         <span className="tabular-nums text-white" suppressHydrationWarning>
           {fmtTime(new Date(cur).toISOString())}
         </span>
-        {preview !== null && <span className="text-white/40">release to set</span>}
+        {playing && <span className="text-sky-300/80">playing</span>}
         <span className="ml-auto flex items-center gap-2 text-white/45">
           {tl?.available && site ? (
             <>
@@ -89,9 +127,10 @@ export default function TimeScrubber() {
         className="relative h-9 cursor-ew-resize touch-none select-none"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
-          setPreview(timeAt(e.clientX));
+          setPlaying(false);
+          live(timeAt(e.clientX));
         }}
-        onPointerMove={(e) => preview !== null && setPreview(timeAt(e.clientX))}
+        onPointerMove={(e) => preview !== null && live(timeAt(e.clientX))}
         onPointerUp={(e) => preview !== null && commit(timeAt(e.clientX))}
         onPointerCancel={() => setPreview(null)}
       >

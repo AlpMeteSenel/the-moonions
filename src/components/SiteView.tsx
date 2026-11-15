@@ -5,7 +5,7 @@ import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { api } from "@/lib/api";
-import { fmtDist, offsetLatLon, sunVectorLocal } from "@/lib/geo";
+import { fmtDist, latLonToVec3, offsetLatLon, sunVectorLocal } from "@/lib/geo";
 import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
@@ -430,13 +430,22 @@ export function SiteSun() {
   const site = useSelected();
   const ev = useEval(site?.id);
   const real = useStore((s) => s.realLighting);
+  const track = useStore((s) => s.sun);
   const frame = useSiteFrame(site);
   const target = useMemo(() => new THREE.Object3D(), []);
-  if (!site || !frame || !ev) return <ambientLight intensity={0.25} color="#9db4ff" />;
+  if (!site || !frame) return <ambientLight intensity={0.25} color="#9db4ff" />;
   const size = ((2 * patchHalfM(site)) / 1000) * KM;
-  const sun = sunOf(ev, real);
   const at = toWorld(frame.center);
-  const dirWorld = toWorld(sun.dir.clone().applyMatrix4(new THREE.Matrix4().extractRotation(frame.matrix)));
+  let sun = ev ? sunOf(ev, real) : { el: 20, dir: sunVectorLocal(90, 45) };
+  let dirWorld = toWorld(sun.dir.clone().applyMatrix4(new THREE.Matrix4().extractRotation(frame.matrix)));
+  if (real && track) {
+    // true Sun direction from the time track: follows scrubbing and playback with no request
+    const up = toWorld(frame.up);
+    dirWorld = toWorld(latLonToVec3(track.sun_lat, track.sun_lon, 1)).normalize();
+    const el = (Math.asin(Math.max(-1, Math.min(1, dirWorld.dot(up)))) * 180) / Math.PI;
+    sun = { el, dir: sun.dir };
+    if (el < 1.5) dirWorld.addScaledVector(up, Math.sin(((1.5 - el) * Math.PI) / 180)).normalize();
+  }
   target.position.copy(at);
   target.updateMatrixWorld();
   return (

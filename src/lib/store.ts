@@ -108,6 +108,17 @@ interface State {
   loadTimeline: (id: string) => Promise<void>;
   suggestAround: (id: string) => Promise<void>;
   refreshSun: () => Promise<void>;
+  /** Sun/Earth sub-points over the time track: lighting follows the time without a request. */
+  sunTrack: { start: number; step: number; pts: [number, number, number, number][] } | null;
+  sunTrackAnchor: string | null;
+  loadSunTrack: () => Promise<void>;
+  playing: boolean;
+  /** Playback speed, hours of mission time per second. */
+  playSpeed: number;
+  setPlaying: (on: boolean) => void;
+  setPlaySpeed: (h: number) => void;
+  /** Advance playback by one frame (no full refresh; the AI map and region colours follow, throttled). */
+  playStep: (hours: number) => void;
   loadProposals: () => Promise<void>;
   propose: (id: string, notes?: string) => Promise<Proposal | undefined>;
   decide: (pid: string, status: Proposal["status"], notes?: string) => Promise<void>;
@@ -168,6 +179,26 @@ export const evalKey = (id: string, s: Pick<State, "landingTime" | "profile" | "
   `${id}|${s.landingTime}|${s.profile}|${s.divertRadius}|${s.missionHours}`;
 
 let timeTimer: ReturnType<typeof setTimeout> | null = null;
+let lastFrameFetch = 0;
+
+/** Sun/Earth sub-points at a time from the track (linear, longitude unwrapped), or null outside it. */
+function sunAt(track: State["sunTrack"], iso: string): SunState | null {
+  if (!track) return null;
+  const f = (new Date(iso).getTime() - track.start) / (track.step * 3600e3);
+  if (f < 0 || f > track.pts.length - 1) return null;
+  const i = Math.min(track.pts.length - 2, Math.floor(f));
+  const u = f - i;
+  const a = track.pts[i];
+  const b = track.pts[i + 1];
+  const lon = (p: number, q: number) => {
+    let d = q - p;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    const v = p + d * u;
+    return ((v + 540) % 360) - 180;
+  };
+  return { time: iso, sun_lat: a[0] + (b[0] - a[0]) * u, sun_lon: lon(a[1], b[1]), earth_lat: a[2] + (b[2] - a[2]) * u, earth_lon: lon(a[3], b[3]) };
+}
 const inflight = new Map<string, Promise<Evaluation | undefined>>();
 const condInflight = new Set<string>();
 const sumInflight = new Set<string>();
@@ -194,6 +225,10 @@ export const useStore = create<State>((set, get) => ({
   errors: {},
   timelines: {},
   sun: null,
+  sunTrack: null,
+  sunTrackAnchor: null,
+  playing: false,
+  playSpeed: 6,
   proposals: [],
   suggesting: false,
   placing: false,
@@ -226,7 +261,7 @@ export const useStore = create<State>((set, get) => ({
     // ago); start the session at the current hour on the client
     const now = roundHour();
     set({ landingTime: now, settledTime: now, timeAnchor: anchorFor(now) });
-    const [sites] = await Promise.all([api.sites(), get().refreshSun(), get().loadProposals(), get().loadModelCard()]);
+    const [sites] = await Promise.all([api.sites(), get().loadSunTrack().then(() => get().refreshSun()), get().loadProposals(), get().loadModelCard()]);
     const all = [...sites, ...loadCustom()];
     set({ sites: all, planSiteIds: all.filter((x) => x.group === "Artemis III region").map((x) => x.id) });
     void get().loadSummaries();
@@ -245,9 +280,11 @@ export const useStore = create<State>((set, get) => ({
   },
   setFocusBackup: (id) => set({ focusBackup: id }),
   setLandingTime: (iso) => {
-    set({ landingTime: iso, sun: null, timeAnchor: keepAnchor(iso, get().timeAnchor) });
+    const anchor = keepAnchor(iso, get().timeAnchor);
+    set({ landingTime: iso, timeAnchor: anchor, sun: sunAt(get().sunTrack, iso) ?? get().sun });
+    if (anchor !== get().sunTrackAnchor) void get().loadSunTrack();
     // scrubbing fires this many times a second: fetch once the time settles; until then the
-    // current-time results are unavailable until the matching request completes
+    // last results stay on screen
     if (timeTimer) clearTimeout(timeTimer);
     timeTimer = setTimeout(() => {
       timeTimer = null;
@@ -389,11 +426,50 @@ export const useStore = create<State>((set, get) => ({
 
   refreshSun: async () => {
     const time = get().landingTime;
+    const local = sunAt(get().sunTrack, time);
+    if (local) return set({ sun: local });
     try {
       const sun = await api.sun(time);
       if (get().landingTime === time) set({ sun });
     } catch {
-      if (get().landingTime === time) set({ sun: null });
+      /* keep the last lighting */
+    }
+  },
+  loadSunTrack: async () => {
+    const anchor = get().timeAnchor;
+    if (get().sunTrackAnchor === anchor) return;
+    set({ sunTrackAnchor: anchor });
+    try {
+      const tr = await api.sunTrack(anchor, TRACK_DAYS * 24);
+      if (get().timeAnchor !== anchor) return;
+      const sunTrack = { start: new Date(tr.start).getTime(), step: tr.step_hours, pts: tr.points };
+      set({ sunTrack, sun: sunAt(sunTrack, get().landingTime) ?? get().sun });
+    } catch {
+      set({ sunTrackAnchor: null });
+    }
+  },
+  setPlaying: (on) => {
+    if (on === get().playing) return;
+    set({ playing: on });
+    if (on) {
+      if (timeTimer) clearTimeout(timeTimer);
+      void api.prewarm(get().landingTime, 48);
+    } else get().fetchForTime();
+  },
+  setPlaySpeed: (h) => set({ playSpeed: h }),
+  playStep: (hours) => {
+    const t = new Date(get().landingTime).getTime() + hours * 3600e3;
+    const iso = new Date(Math.round(t / 3600e3) * 3600e3).toISOString();
+    const anchor = keepAnchor(iso, get().timeAnchor);
+    set({ landingTime: iso, timeAnchor: anchor, sun: sunAt(get().sunTrack, iso) ?? get().sun });
+    if (anchor !== get().sunTrackAnchor) void get().loadSunTrack();
+    // the AI map image and the region colours follow at most ~1x per second
+    const now = Date.now();
+    if (now - lastFrameFetch > 900) {
+      lastFrameFetch = now;
+      set({ settledTime: iso });
+      void get().loadSummaries(iso);
+      if ((new Date(iso).getUTCHours() + 24) % 24 === 0) void api.prewarm(iso, 48);
     }
   },
   loadProposals: async () => {
@@ -469,7 +545,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setLandingTimeAndSelect: (id, iso) => {
     if (timeTimer) clearTimeout(timeTimer);
-    set({ landingTime: iso, sun: null, settledTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor) });
+    set({ landingTime: iso, settledTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor), sun: sunAt(get().sunTrack, iso) ?? get().sun });
     void get().refreshSun();
     get().select(id);
   },
@@ -587,11 +663,11 @@ export function useSelected() {
 }
 
 export function useEval(id: string | null | undefined) {
-  return useStore((s) => (id ? s.evals[evalKey(id, s)] : undefined));
+  return useStore((s) => (id ? s.evals[evalKey(id, s)] ?? s.lastEval[id] : undefined));
 }
 
 export function useAI(id: string | null | undefined) {
-  return useStore((s) => (id ? s.ai[aiKey(id, s.landingTime)] : undefined));
+  return useStore((s) => (id ? s.ai[aiKey(id, s.landingTime)] ?? s.lastAi[id] : undefined));
 }
 
 export function useAILoading(id: string | null | undefined) {
@@ -601,7 +677,7 @@ export function useAILoading(id: string | null | undefined) {
 export function useRegion(id: string | null | undefined) {
   return useStore((s) => {
     const site = id ? s.sites.find((x) => x.id === id) : undefined;
-    return site ? s.regions[regionKey(site.id, s.landingTime, halfSizeOf(site))] : undefined;
+    return site ? s.regions[regionKey(site.id, s.landingTime, halfSizeOf(site))] ?? s.lastRegion[`${site.id}|${halfSizeOf(site)}`] : undefined;
   });
 }
 

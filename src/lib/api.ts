@@ -26,6 +26,8 @@ export const api = {
   conditions: (lat: number, lon: number, start: string, days = 14, mission_hours = 156) =>
     req<Conditions>(`/api/conditions?lat=${lat}&lon=${lon}&start=${encodeURIComponent(start)}&days=${days}&step_min=10&mission_hours=${mission_hours}`),
   sun: (time: string) => req<SunState>(`/api/sun?time=${encodeURIComponent(time)}`),
+  sunTrack: (start: string, hours: number) => req<{ start: string; step_hours: number; points: [number, number, number, number][] }>(`/api/sun/track?start=${encodeURIComponent(start)}&hours=${hours}`),
+  prewarm: (start: string, hours: number) => fetch(`${API_URL}/api/ai/prewarm?start=${encodeURIComponent(start)}&hours=${hours}`, { method: "POST", headers: BACKEND_HEADERS }).catch(() => undefined),
   evaluate: (lat: number, lon: number, o: EvalOptions, signal?: AbortSignal) =>
     req<Evaluation>("/api/evaluate", { method: "POST", body: JSON.stringify({ lat, lon, ...o }), signal }),
   suggest: (lat: number, lon: number, o: EvalOptions, region_radius_m = 7500, n = 4) =>

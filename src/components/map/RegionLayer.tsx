@@ -284,7 +284,7 @@ function useLabelSlots(S: Surface, regions: Site[], summaries: Record<string, Re
 function Regions({ S }: { S: Surface }) {
   const sites = useStore((s) => s.sites);
   const selectedId = useStore((s) => s.selectedId);
-  const summaries = useStore((s) => s.summaries[hourOf(s.landingTime)]);
+  const summaries = useStore((s) => s.summaries[hourOf(s.landingTime)] ?? s.lastSummaries);
   const regions = useMemo(() => sites.filter((s) => s.group !== "Historic landing"), [sites]);
   const slots = useLabelSlots(S, regions, summaries, selectedId);
   return (
