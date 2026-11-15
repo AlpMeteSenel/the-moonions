@@ -1,8 +1,8 @@
 "use client";
 
-import { FastForward, Loader2, MapPin, Play, RotateCcw, Sparkles } from "lucide-react";
+import { FastForward, PenLine, Loader2, MapPin, Play, RotateCcw, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { dwellMs, runAgents, type AgentDecision, type AgentEvent, type AgentId, type AgentInfo, type Vote } from "@/lib/agents";
+import { dwellMs, runAreaPlan, type AgentDecision, type AgentEvent, type AgentId, type AgentInfo, type Vote } from "@/lib/agents";
 import { useStore } from "@/lib/store";
 import { fmtTime } from "@/lib/ui";
 import { DESK, drawAstronaut, drawBackground, drawHologram, drawMonitor, drawPaper, FLOOR, H, HOME, TABLE_X, W, type Pose } from "./pixel";
@@ -45,12 +45,30 @@ export default function MissionControl({ visible }: { visible: boolean }) {
   const landingTime = useStore((s) => s.landingTime);
   const missionHours = useStore((s) => s.missionHours);
   const sites = useStore((s) => s.sites);
-  const applyPlan = useStore((s) => s.setLandingTimeAndSelect);
+  // the crew acts out the area planner: circle an area, say what you want, the agents research it
+  const area = useStore((s) => s.planArea);
+  const drawing = useStore((s) => s.drawingArea);
+  const draftN = useStore((s) => s.planDraft.length);
+  const setDrawing = useStore((s) => s.setDrawingArea);
+  const setArea = useStore((s) => s.setPlanArea);
+  const setOverlay = useStore((s) => s.setPlanOverlay);
+  const [request, setRequest] = useState("");
+  /** Show a proposal: listed sites are selected; new areas become a custom region of the analysed size. */
+  const applyPlan = useCallback((p: { site_id: string; name: string; landing_time: string; area?: { lat: number; lon: number; half_size_m: number } }) => {
+    const st = useStore.getState();
+    let id = p.site_id;
+    if (p.area) {
+      const existing = st.sites.find((x) => x.custom && Math.abs(x.lat - p.area!.lat) < 1e-5 && Math.abs(x.lon - p.area!.lon) < 1e-5);
+      id = existing?.id ?? st.addCustom(p.area.lat, p.area.lon, `Plan · ${p.name}`);
+      if (!existing) st.setRegionSize(id, p.area.half_size_m);
+    }
+    st.setLandingTimeAndSelect(id, new Date(p.landing_time).toISOString());
+  }, []);
   const applyRef = useRef(applyPlan);
   applyRef.current = applyPlan;
 
-  const [start, setStart] = useState(() => landingTime.slice(0, 10));
-  const [days, setDays] = useState(14);
+  const [start] = useState(() => landingTime.slice(0, 10));
+  const [days, setDays] = useState(30);
   const [speed, setSpeed] = useState(1);
   const [running, setRunning] = useState(false);
   const [streamDone, setStreamDone] = useState(false);
@@ -134,7 +152,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
         S.chief.bubble = { text: e.decision ? (e.decision.go ? "GO for landing!" : "NO-GO") : "NO-GO", kind: "say", until: hold(5000) };
         setDecision(e.decision ?? null);
         // show the team's pick on the map above straight away
-        if (e.decision) applyRef.current(e.decision.primary.site_id, e.decision.primary.landing_time);
+        if (e.decision) applyRef.current(e.decision.primary);
         const go = !!e.decision?.go;
         IDS.filter((id) => id !== "chief").forEach((id, i) => {
           const side = i < 3 ? -1 : 1;
@@ -166,7 +184,9 @@ export default function MissionControl({ visible }: { visible: boolean }) {
     setStreamDone(false);
     setRunning(true);
     try {
-      await runAgents(`${start}T00:00:00Z`, days, missionHours, (e) => queue.current.push(e), ctl.signal);
+      if (!area) throw new Error("Draw an area on the Moon first.");
+      const from = new Date(Math.max(Date.now() - 3600e3, new Date(`${start}T00:00:00Z`).getTime())).toISOString();
+      await runAreaPlan(area.points, request, from, days, missionHours, (e) => queue.current.push(e), setOverlay, ctl.signal);
     } catch (err) {
       if (!ctl.signal.aborted) {
         const msg = String((err as Error).message ?? err);
@@ -176,7 +196,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
     } finally {
       if (!ctl.signal.aborted) setStreamDone(true);
     }
-  }, [start, days, missionHours]);
+  }, [start, days, missionHours, area, request, setOverlay]);
 
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => {
@@ -286,26 +306,42 @@ export default function MissionControl({ visible }: { visible: boolean }) {
   return (
     <div className="h-full min-h-0 bg-[#03040a]" style={{ display: visible ? "flex" : "none" }}>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 whitespace-nowrap border-b border-white/5 px-3 py-1.5 text-[12px]">
-          <label className="flex items-center gap-1.5 text-white/55">
-            From
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} disabled={running} className="w-[124px] rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-white [color-scheme:dark]" />
-          </label>
-          <label className="flex items-center gap-1.5 text-white/55">
-            for
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={running} className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-white">
-              {[7, 14, 21, 28].map((d) => (
-                <option key={d} value={d} className="bg-slate-900">
-                  {d} days
-                </option>
-              ))}
-            </select>
-          </label>
-          <button onClick={start_} disabled={running} className="flex items-center gap-1.5 rounded-md bg-cyan-400 px-2.5 py-1 font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-60">
-            {running ? <Loader2 size={13} className="animate-spin" /> : log.length ? <RotateCcw size={13} /> : <Play size={13} />}
-            {running ? "Agents at work…" : log.length ? "Run again" : "Start the team"}
+        <div className="border-b border-white/5 px-3 py-1.5 text-[12px]">
+        <input
+          value={request}
+          onChange={(e) => setRequest(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && area && !running && start_()}
+          disabled={running}
+          placeholder="What do you want to do there? e.g. sample water ice while staying powered"
+          className="mb-1.5 w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white placeholder:text-white/35 focus:border-cyan-300/50 focus:outline-none"
+        />
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <button
+            onClick={() => setDrawing(!drawing)}
+            disabled={running}
+            className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold ${drawing ? "bg-pink-400 text-slate-950" : area ? "border border-pink-300/40 bg-pink-400/10 text-pink-100" : "bg-pink-400/90 text-slate-950 hover:bg-pink-300"}`}
+            title="Drag to draw freehand, or click to place points; double-click, Enter or the first point closes it; Backspace undoes; Esc cancels"
+          >
+            <PenLine size={13} />
+            {drawing ? (draftN ? `${draftN} point${draftN > 1 ? "s" : ""} · Enter to close` : "Draw on the Moon…") : area ? `Area · ${area.area_km2.toFixed(0)} km²` : "Draw an area"}
           </button>
-          <div className="ml-auto flex items-center gap-1 text-white/50">
+          {area && !running && (
+            <button onClick={() => setArea(null)} className="-ml-1 rounded p-0.5 text-white/40 hover:text-white" title="Clear the area">
+              <X size={13} />
+            </button>
+          )}
+          <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={running} className="rounded-md border border-white/10 bg-white/5 px-1.5 py-1 text-white">
+            {[14, 30].map((d) => (
+              <option key={d} value={d} className="bg-slate-900">
+                next {d} days
+              </option>
+            ))}
+          </select>
+          <button onClick={start_} disabled={running || !area} className="flex shrink-0 items-center gap-1.5 rounded-md bg-cyan-400 px-2.5 py-1 font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50">
+            {running ? <Loader2 size={13} className="animate-spin" /> : log.length ? <RotateCcw size={13} /> : <Play size={13} />}
+            {running ? "Agents at work…" : log.length ? "Run again" : "Find where to land"}
+          </button>
+          <div className="ml-auto flex shrink-0 items-center gap-1 text-white/50">
             <FastForward size={13} />
             {[1, 2, 4].map((s) => (
               <button key={s} onClick={() => setSpeed(s)} className={`rounded px-1.5 py-0.5 tabular-nums ${speed === s ? "bg-white/15 text-white" : "hover:text-white"}`}>
@@ -314,6 +350,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
             ))}
 
           </div>
+        </div>
         </div>
 
         <div ref={wrap} className="relative min-h-0 flex-1 overflow-hidden">
@@ -358,9 +395,15 @@ export default function MissionControl({ visible }: { visible: boolean }) {
           </div>
           {!log.length && !running && (
             <div className="absolute inset-x-0 bottom-6 flex justify-center">
-              <button onClick={start_} className="flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-[13px] font-semibold text-slate-950 shadow-xl hover:bg-cyan-300">
-                <Play size={14} /> Start the team
-              </button>
+              {area ? (
+                <button onClick={start_} className="flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-[13px] font-semibold text-slate-950 shadow-xl hover:bg-cyan-300">
+                  <Play size={14} /> Find where to land
+                </button>
+              ) : (
+                <button onClick={() => setDrawing(true)} className="flex items-center gap-2 rounded-lg bg-pink-400 px-4 py-2 text-[13px] font-semibold text-slate-950 shadow-xl hover:bg-pink-300">
+                  <PenLine size={14} /> {drawing ? "Drag to draw freehand, or click points · Enter closes · Esc cancels" : "Draw an area on the Moon, then tell the team what you want"}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -446,7 +489,7 @@ export default function MissionControl({ visible }: { visible: boolean }) {
             <div className="mt-1 text-[10px] text-white/35">Decided by {decision.decided_by === "rules" ? "the rule check" : `${decision.decided_by}, checked against the vetoes`}</div>
             <button
               onClick={() => {
-                applyPlan(decision.primary.site_id, decision.primary.landing_time);
+                applyPlan(decision.primary);
               }}
               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-white/15"
             >

@@ -6,7 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_URL, texture } from "@/lib/api";
 import { BACKEND_HEADERS, HeaderTextureLoader } from "@/lib/net";
-import { fmtDist, latLonToVec3, offsetLatLon, vec3ToLatLon } from "@/lib/geo";
+import { fmtDist, latLonToVec3, offsetLatLon, regionOutline, vec3ToLatLon } from "@/lib/geo";
 import { BAND_SEGMENTS, bandEdgeLat, DISP_BIAS, DISP_SCALE, RELIEF_EXAGGERATION, useSurface } from "@/lib/heights";
 import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { MOON_Q, toLocal, toWorld } from "@/lib/moonFrame";
@@ -151,7 +151,12 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
         </Suspense>
       )}
       {/* interaction proxy */}
-      <mesh onClick={onClick} onDoubleClick={onDouble} onPointerMove={onMove} onPointerOut={() => setHover(null)}>
+      <mesh
+        onClick={onClick}
+        onDoubleClick={onDouble}
+        onPointerMove={onMove}
+        onPointerOut={() => setHover(null)}
+      >
         <sphereGeometry args={[1.0, 64, 32]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
       </mesh>
@@ -328,6 +333,206 @@ function GlobeLander() {
   );
 }
 
+/** Polygon area (km²) of [lat, lon] vertices: azimuthal projection about the centroid, then shoelace. */
+export function polygonAreaKm2(pts: [number, number][]) {
+  if (pts.length < 3) return 0;
+  const v = pts.map(([la, lo]) => latLonToVec3(la, lo, 1));
+  const c = v.reduce((a, x) => a.add(x), new THREE.Vector3()).normalize();
+  const east = new THREE.Vector3(0, 1, 0).cross(c);
+  if (east.lengthSq() < 1e-12) east.set(0, 0, -1);
+  east.normalize();
+  const north = c.clone().cross(east);
+  const R = 1737.4;
+  const xy = v.map((p) => {
+    const ang = Math.acos(Math.min(1, Math.max(-1, p.dot(c))));
+    const t = p.clone().sub(c.clone().multiplyScalar(p.dot(c)));
+    const len = t.length() || 1;
+    return [((t.dot(east) / len) * ang * R), ((t.dot(north) / len) * ang * R)];
+  });
+  let s = 0;
+  for (let i = 0; i < xy.length; i++) {
+    const [x1, y1] = xy[i];
+    const [x2, y2] = xy[(i + 1) % xy.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(s) / 2;
+}
+
+/**
+ * Draw an area on the Moon: press-and-drag draws freehand (closes on release); clicks place
+ * vertices (close by clicking the first one, double-click or Enter). Backspace undoes a vertex,
+ * Escape cancels. Mouse input on the canvas is taken over while drawing (zoom still works).
+ */
+function DrawController() {
+  const drawing = useStore((s) => s.drawingArea);
+  const { gl, camera, invalidate } = useThree();
+  useEffect(() => {
+    if (!drawing) return;
+    const el = gl.domElement;
+    const ray = new THREE.Raycaster();
+    const sphere = new THREE.Sphere(new THREE.Vector3(), 1);
+    const hitAt = (ev: PointerEvent | MouseEvent): [number, number] | null => {
+      const r = el.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
+      const p = ray.ray.intersectSphere(sphere, new THREE.Vector3());
+      if (!p) return null;
+      const { lat, lon } = vec3ToLatLon(toLocal(p));
+      return [lat, lon];
+    };
+    const screenOf = ([lat, lon]: [number, number]) => {
+      const v = toWorld(latLonToVec3(lat, lon, 1)).project(camera);
+      const r = el.getBoundingClientRect();
+      return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+    };
+    const finish = () => {
+      const pts = useStore.getState().planDraft;
+      if (pts.length >= 3) useStore.getState().setPlanArea({ points: pts, area_km2: polygonAreaKm2(pts) });
+      invalidate();
+    };
+    let down: { x: number; y: number; freehand: boolean; last: [number, number] } | null = null;
+    const onDown = (ev: PointerEvent) => {
+      if (ev.button !== 0) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      const h = hitAt(ev);
+      if (!h) return;
+      el.setPointerCapture(ev.pointerId);
+      down = { x: ev.clientX, y: ev.clientY, freehand: false, last: [ev.clientX, ev.clientY] as unknown as [number, number] };
+    };
+    const onMove = (ev: PointerEvent) => {
+      const h = hitAt(ev);
+      useStore.setState({ planHover: h });
+      if (down) {
+        ev.stopPropagation();
+        const [lx, ly] = down.last as unknown as [number, number];
+        if (!down.freehand && Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 8) {
+          down.freehand = true;
+          const start = hitAt({ clientX: down.x, clientY: down.y } as PointerEvent);
+          if (start) useStore.setState({ planDraft: [start] });
+        }
+        if (down.freehand && h && Math.hypot(ev.clientX - lx, ev.clientY - ly) > 6) {
+          down.last = [ev.clientX, ev.clientY] as unknown as [number, number];
+          useStore.setState((s) => ({ planDraft: [...s.planDraft, h] }));
+        }
+      }
+      invalidate();
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (!down) return;
+      ev.stopPropagation();
+      const wasFree = down.freehand;
+      down = null;
+      if (wasFree) return finish();
+      const h = hitAt(ev);
+      if (!h) return;
+      const pts = useStore.getState().planDraft;
+      // click on the first vertex closes the outline
+      if (pts.length >= 3) {
+        const [fx, fy] = screenOf(pts[0]);
+        if (Math.hypot(ev.clientX - fx, ev.clientY - fy) < 12) return finish();
+      }
+      useStore.setState({ planDraft: [...pts, h] });
+      invalidate();
+    };
+    const onDbl = (ev: MouseEvent) => {
+      ev.stopPropagation();
+      finish();
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Enter") finish();
+      else if (ev.key === "Escape") useStore.getState().setDrawingArea(false);
+      else if (ev.key === "Backspace") useStore.setState((s) => ({ planDraft: s.planDraft.slice(0, -1) }));
+      else return;
+      ev.preventDefault();
+      invalidate();
+    };
+    el.addEventListener("pointerdown", onDown, true);
+    el.addEventListener("pointermove", onMove, true);
+    el.addEventListener("pointerup", onUp, true);
+    el.addEventListener("dblclick", onDbl, true);
+    window.addEventListener("keydown", onKey);
+    const prev = el.style.cursor;
+    el.style.cursor = "crosshair";
+    return () => {
+      el.removeEventListener("pointerdown", onDown, true);
+      el.removeEventListener("pointermove", onMove, true);
+      el.removeEventListener("pointerup", onUp, true);
+      el.removeEventListener("dblclick", onDbl, true);
+      window.removeEventListener("keydown", onKey);
+      el.style.cursor = prev;
+      useStore.setState({ planHover: null });
+    };
+  }, [drawing, gl, camera, invalidate]);
+  return null;
+}
+
+/** The outlined planning area (or the outline being drawn), candidate squares and numbered proposals. */
+function PlanLayer() {
+  const area = useStore((s) => s.planArea);
+  const drawing = useStore((s) => s.drawingArea);
+  const draft = useStore((s) => s.planDraft);
+  const hover = useStore((s) => s.planHover);
+  const overlay = useStore((s) => s.planOverlay);
+  const S = useSurface();
+  const lift = (lat: number, lon: number) => latLonToVec3(lat, lon, (S?.rendered(lat, lon) ?? 1) + 0.0004);
+  // densify each edge so the outline follows the curved, displaced surface
+  const outline = (pts: [number, number][], closed: boolean) => {
+    const out: THREE.Vector3[] = [];
+    const n = closed ? pts.length : pts.length - 1;
+    for (let i = 0; i < n; i++) {
+      const a = latLonToVec3(pts[i][0], pts[i][1], 1);
+      const b = latLonToVec3(pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1], 1);
+      const steps = Math.max(1, Math.ceil(a.angleTo(b) / 0.0015));
+      for (let k = 0; k < steps; k++) {
+        const { lat, lon } = vec3ToLatLon(a.clone().lerp(b, k / steps).normalize());
+        out.push(lift(lat, lon));
+      }
+    }
+    if (!closed && pts.length) out.push(lift(...pts[pts.length - 1]));
+    if (closed && out.length) out.push(out[0].clone());
+    return out;
+  };
+  const shape = useMemo(() => (area ? outline(area.points, true) : null), [area, S]); // eslint-disable-line react-hooks/exhaustive-deps
+  const live = drawing ? [...draft, ...(hover ? [hover] : [])] : [];
+  const squares = useMemo(
+    () => (overlay?.candidates ?? []).map((c) => ({ id: c.id, pts: regionOutline(c.lat, c.lon, c.half_size_m, 1, 8).map((p) => lift(...(Object.values(vec3ToLatLon(p)) as [number, number]))) })),
+    [overlay, S], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const centre = area ? area.points.reduce((a, p) => [a[0] + p[0] / area.points.length, a[1] + p[1] / area.points.length], [0, 0]) : null;
+  return (
+    <group>
+      {shape && shape.length > 1 && <Line points={shape} color="#f472b6" lineWidth={2.5} transparent opacity={0.95} />}
+      {drawing && live.length > 1 && <Line points={outline(live as [number, number][], false)} color="#f9a8d4" lineWidth={2} dashed dashSize={0.0015} gapSize={0.001} />}
+      {drawing &&
+        draft.map((p, i) => (
+          <mesh key={i} position={lift(p[0], p[1])} raycast={() => null}>
+            <sphereGeometry args={[i === 0 ? 0.0016 : 0.0011, 10, 10]} />
+            <meshBasicMaterial color={i === 0 ? "#ffffff" : "#f472b6"} toneMapped={false} />
+          </mesh>
+        ))}
+      {area && centre && !overlay?.proposals.length && (
+        <group position={lift(centre[0], centre[1])}>
+          <Html center style={{ pointerEvents: "none" }} zIndexRange={[24, 0]}>
+            <div className="whitespace-nowrap rounded-full border border-pink-200/60 bg-slate-950/85 px-2 py-0.5 text-[11px] font-semibold text-pink-100">{area.area_km2.toFixed(0)} km²</div>
+          </Html>
+        </group>
+      )}
+      {squares.map((q) => (
+        <Line key={q.id} points={q.pts} color="#e2e8f0" lineWidth={1} dashed dashSize={0.0008} gapSize={0.0006} transparent opacity={0.5} />
+      ))}
+      {(overlay?.proposals ?? []).map((p, i) => (
+        <group key={i} position={lift(p.lat, p.lon)}>
+          <Html center style={{ pointerEvents: "none" }} zIndexRange={[24, 0]}>
+            <div className="-translate-y-3 whitespace-nowrap rounded-full border border-pink-200 bg-pink-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-lg">
+              {i + 1} · {p.title}
+            </div>
+          </Html>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 function SiteMarkers() {
   const sites = useStore((s) => s.sites);
   const selectedId = useStore((s) => s.selectedId);
@@ -358,6 +563,7 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   const view = useStore((s) => s.view);
   const sun = useStore((s) => s.sun);
   const preset = useStore((s) => s.cameraPreset);
+  const drawingArea = useStore((s) => s.drawingArea);
   const frame = useSiteFrame(selected);
   const framed = useRef(false);
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null);
@@ -493,6 +699,7 @@ function CameraRig({ flyTo }: { flyTo: THREE.Vector3 | null }) {
   return (
     <OrbitControls
       ref={controls}
+      enableRotate={!drawingArea}
       enablePan={false}
       regress
       enableDamping
@@ -521,10 +728,13 @@ export default function Globe() {
             <RegionLayer />
             <SiteMarkers />
             <GlobeLander />
+            <PlanLayer />
+            
           </>
         )}
       </group>
       <CameraRig flyTo={flyTo} />
+      <DrawController />
     </>
   );
 }

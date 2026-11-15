@@ -6,6 +6,16 @@ import type { AIAssessment, AIPlan, AITimeline, Conditions, RegionAnalysis, Regi
 
 export type View = "globe" | "site";
 export type Panel = "crew" | "planner" | "compare" | "proposals" | null;
+
+/** An area outlined on the Moon: [lat, lon] vertices (closed implicitly). */
+export interface PlanArea {
+  points: [number, number][];
+  area_km2: number;
+}
+export interface PlanOverlay {
+  candidates: { id: string; lat: number; lon: number; half_size_m: number }[];
+  proposals: { lat: number; lon: number; title: string }[];
+}
 export type CameraPreset = "moon" | "pole" | "region";
 
 function roundHour(d = new Date()) {
@@ -112,6 +122,16 @@ interface State {
   sunTrack: { start: number; step: number; pts: [number, number, number, number][] } | null;
   sunTrackAnchor: string | null;
   loadSunTrack: () => Promise<void>;
+  /** Area planner: drawing mode, the circled area and what the agent found (shown on the globe). */
+  drawingArea: boolean;
+  planArea: PlanArea | null;
+  /** Vertices placed so far while drawing, and the point under the cursor (rubber band). */
+  planDraft: [number, number][];
+  planHover: [number, number] | null;
+  planOverlay: PlanOverlay | null;
+  setDrawingArea: (on: boolean) => void;
+  setPlanArea: (a: PlanArea | null) => void;
+  setPlanOverlay: (o: PlanOverlay | null) => void;
   playing: boolean;
   /** Playback speed, hours of mission time per second. */
   playSpeed: number;
@@ -240,6 +260,14 @@ export const useStore = create<State>((set, get) => ({
   sun: null,
   sunTrack: null,
   sunTrackAnchor: null,
+  drawingArea: false,
+  planArea: null,
+  planDraft: [],
+  planHover: null,
+  planOverlay: null,
+  setDrawingArea: (on) => set({ drawingArea: on, planDraft: [], planHover: null }),
+  setPlanArea: (a) => set({ planArea: a, planOverlay: null, drawingArea: false, planDraft: [], planHover: null }),
+  setPlanOverlay: (o) => set({ planOverlay: o }),
   playing: false,
   playSpeed: 6,
   proposals: [],
