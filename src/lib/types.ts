@@ -17,7 +17,7 @@ export interface Site {
 export interface Factor {
   key: FactorKey;
   label: string;
-  score: number;
+  score: number | null;
   summary: string;
   details: Record<string, unknown>;
   hard_fail: boolean;

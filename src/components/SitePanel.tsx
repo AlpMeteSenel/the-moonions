@@ -15,20 +15,20 @@ import Source from "./ai/Source";
 type Tab = "region" | "ai" | "score" | "windows";
 
 function FactorRow({ f }: { f: Factor }) {
-  const col = f.hard_fail ? "#f87171" : scoreColor(f.score);
+  const col = f.score === null ? "#94a3b8" : f.hard_fail ? "#f87171" : scoreColor(f.score);
   return (
     <div className="py-2">
       <div className="flex items-center justify-between text-[12px]">
         <span className="flex items-center gap-1.5 font-medium text-white/85">
-          {f.label} <Source kind="computed" />
+          {f.label} {f.score !== null && <Source kind={f.key === "backups" ? "simulated" : "computed"} />}
         </span>
         <span className="font-semibold tabular-nums" style={{ color: col }}>
-          {f.hard_fail ? "FAIL" : Math.round(f.score)}
+          {f.score === null ? "Not assessed" : f.hard_fail ? "FAIL" : Math.round(f.score)}
         </span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+      {f.score !== null && <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(3, f.score)}%`, background: col }} />
-      </div>
+      </div>}
       <div className="mt-1 text-[11px] leading-snug text-white/55">{f.summary}</div>
     </div>
   );
@@ -40,6 +40,7 @@ function ScoreTab({ ev }: { ev: Evaluation }) {
   const ai = (ev.factors.find((f) => f.key === "ground")?.details.ai ?? null) as { p_safe: number } | null;
   return (
     <div>
+      <p className="mb-2 text-[11px] leading-relaxed text-amber-200/80">Planning scores use generic thresholds and weights. They are not measured safety probabilities. Unassessed factors are excluded from the score.</p>
       <div className="divide-y divide-white/[0.06]">{factors.map((f) => <FactorRow key={f.key} f={f} />)}</div>
       <div className="mt-3 rounded-md bg-white/[0.03] p-2.5 text-[10px] leading-relaxed text-white/40">
         Terrain: {ev.terrain.source} ({Math.round(ev.terrain.resolution_m)} m detail) · tilt {ev.terrain.slope_deg.toFixed(1)}° · relief{" "}

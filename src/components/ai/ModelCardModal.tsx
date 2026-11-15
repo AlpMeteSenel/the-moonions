@@ -104,7 +104,7 @@ export default function ModelCardModal() {
               </tbody>
             </table>
             <div className="mt-1 text-[10.5px] text-white/40">
-              Light, power and Earth link are computed exactly by physics for every option, so the comparison isolates touchdown safety. Only{" "}
+              Light and Earth visibility are computed from ephemerides and sampled terrain; power uses generic panel, load and battery assumptions. The comparison isolates simulated touchdown safety. Only{" "}
               {pct(m.mission_test.share_of_site_dates_viable, 1)} of random polar site-dates pass those checks: timing matters as much as place.
             </div>
 

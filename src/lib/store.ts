@@ -74,6 +74,11 @@ interface State {
   regionTimelines: Record<string, RegionTimeline>;
   focusZone: string | null;
   summaries: Record<string, Record<string, RegionSummary>>;
+  /** Latest result per site (any time): shown while the result for a new time is loading. */
+  lastEval: Record<string, Evaluation>;
+  lastAi: Record<string, AIAssessment>;
+  lastRegion: Record<string, RegionAnalysis>;
+  lastSummaries: Record<string, RegionSummary> | undefined;
   cameraPreset: { kind: CameraPreset; nonce: number };
   showHistoric: boolean;
 
@@ -81,6 +86,10 @@ interface State {
   select: (id: string | null) => void;
   setFocusBackup: (id: string | null) => void;
   setLandingTime: (iso: string) => void;
+  /** Fetch everything that depends on the touchdown time (debounced from setLandingTime). */
+  fetchForTime: () => void;
+  /** The touchdown time once scrubbing settles: drives heavy downloads such as the AI map image. */
+  settledTime: string;
   setProfile: (p: Profile) => void;
   setDivertRadius: (m: number) => void;
   setView: (v: View) => void;
@@ -158,6 +167,7 @@ export const aiKey = (id: string, landingTime: string) => `${id}|${landingTime}`
 export const evalKey = (id: string, s: Pick<State, "landingTime" | "profile" | "divertRadius" | "missionHours">) =>
   `${id}|${s.landingTime}|${s.profile}|${s.divertRadius}|${s.missionHours}`;
 
+let timeTimer: ReturnType<typeof setTimeout> | null = null;
 const inflight = new Map<string, Promise<Evaluation | undefined>>();
 const condInflight = new Set<string>();
 const sumInflight = new Set<string>();
@@ -168,6 +178,7 @@ export const useStore = create<State>((set, get) => ({
   focusBackup: null,
   landingTime: roundHour(),
   timeAnchor: anchorFor(roundHour()),
+  settledTime: roundHour(),
   profile: "balanced",
   divertRadius: 3000,
   missionHours: 156,
@@ -203,6 +214,10 @@ export const useStore = create<State>((set, get) => ({
   regionTimelines: {},
   focusZone: null,
   summaries: {},
+  lastEval: {},
+  lastAi: {},
+  lastRegion: {},
+  lastSummaries: undefined,
   cameraPreset: { kind: "pole", nonce: 0 },
   showHistoric: false,
 
@@ -210,7 +225,7 @@ export const useStore = create<State>((set, get) => ({
     // the module-level default was computed when the module loaded (on the server: possibly hours
     // ago); start the session at the current hour on the client
     const now = roundHour();
-    set({ landingTime: now, timeAnchor: anchorFor(now) });
+    set({ landingTime: now, settledTime: now, timeAnchor: anchorFor(now) });
     const [sites] = await Promise.all([api.sites(), get().refreshSun(), get().loadProposals(), get().loadModelCard()]);
     const all = [...sites, ...loadCustom()];
     set({ sites: all, planSiteIds: all.filter((x) => x.group === "Artemis III region").map((x) => x.id) });
@@ -230,7 +245,17 @@ export const useStore = create<State>((set, get) => ({
   },
   setFocusBackup: (id) => set({ focusBackup: id }),
   setLandingTime: (iso) => {
-    set({ landingTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor) });
+    set({ landingTime: iso, sun: null, timeAnchor: keepAnchor(iso, get().timeAnchor) });
+    // scrubbing fires this many times a second: fetch once the time settles; until then the
+    // current-time results are unavailable until the matching request completes
+    if (timeTimer) clearTimeout(timeTimer);
+    timeTimer = setTimeout(() => {
+      timeTimer = null;
+      get().fetchForTime();
+    }, 180);
+  },
+  fetchForTime: () => {
+    set({ settledTime: get().landingTime });
     void get().refreshSun();
     void get().loadSummaries();
     const { selectedId, compareIds } = get();
@@ -302,7 +327,7 @@ export const useStore = create<State>((set, get) => ({
     const p = api
       .evaluate(site.lat, site.lon, opts)
       .then((ev) => {
-        set({ evals: { ...get().evals, [key]: ev }, errors: { ...get().errors, [id]: "" } });
+        set({ evals: { ...get().evals, [key]: ev }, lastEval: { ...get().lastEval, [id]: ev }, errors: { ...get().errors, [id]: "" } });
         return ev;
       })
       .catch((e: Error) => {
@@ -363,10 +388,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   refreshSun: async () => {
+    const time = get().landingTime;
     try {
-      set({ sun: await api.sun(get().landingTime) });
+      const sun = await api.sun(time);
+      if (get().landingTime === time) set({ sun });
     } catch {
-      /* backend offline */
+      if (get().landingTime === time) set({ sun: null });
     }
   },
   loadProposals: async () => {
@@ -403,7 +430,7 @@ export const useStore = create<State>((set, get) => ({
     set({ aiLoading: { ...get().aiLoading, [key]: true } });
     try {
       const res = await api.assess(site.lat, site.lon, s.landingTime);
-      set({ ai: { ...get().ai, [key]: res } });
+      set({ ai: { ...get().ai, [key]: res }, lastAi: { ...get().lastAi, [id]: res } });
     } catch {
       set({ ai: { ...get().ai, [key]: { available: false } } });
     } finally {
@@ -441,7 +468,8 @@ export const useStore = create<State>((set, get) => ({
     get().setLandingTimeAndSelect(plan.primary.site_id, plan.primary.landing_time);
   },
   setLandingTimeAndSelect: (id, iso) => {
-    set({ landingTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor) });
+    if (timeTimer) clearTimeout(timeTimer);
+    set({ landingTime: iso, sun: null, settledTime: iso, timeAnchor: keepAnchor(iso, get().timeAnchor) });
     void get().refreshSun();
     get().select(id);
   },
@@ -456,7 +484,7 @@ export const useStore = create<State>((set, get) => ({
     set({ regionLoading: { ...get().regionLoading, [key]: true } });
     try {
       const r = await api.region(site.lat, site.lon, halfSizeOf(site), s.landingTime);
-      set({ regions: { ...get().regions, [key]: r } });
+      set({ regions: { ...get().regions, [key]: r }, lastRegion: { ...get().lastRegion, [`${id}|${halfSizeOf(site)}`]: r } });
     } catch {
       set({ regions: { ...get().regions, [key]: { available: false } as RegionAnalysis } });
     } finally {
@@ -507,7 +535,8 @@ export const useStore = create<State>((set, get) => ({
     sumInflight.add(hour);
     try {
       const res = await api.regionsSummary(regions, hour);
-      set({ summaries: { ...get().summaries, [hour]: Object.fromEntries(res.regions.map((r) => [r.id, r])) } });
+      const byId = Object.fromEntries(res.regions.map((r) => [r.id, r]));
+      set({ summaries: { ...get().summaries, [hour]: byId }, lastSummaries: byId });
     } catch {
       /* AI offline */
     } finally {

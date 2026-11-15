@@ -6,7 +6,7 @@ import type { RegionAnalysis } from "@/lib/types";
 import { VERDICT } from "@/lib/ui";
 
 export default function CandidateAssessment({ region, loading = false, compact = false }: { region?: RegionAnalysis; loading?: boolean; compact?: boolean }) {
-  if (loading || !region) return (
+  if (!region) return (
     <div role="status" className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 p-3 text-xs text-white/60">
       <Loader2 size={14} className="animate-spin" /> Assessing this region…
     </div>
@@ -16,11 +16,12 @@ export default function CandidateAssessment({ region, loading = false, compact =
   const tone = VERDICT[assessment.verdict];
   const Icon = assessment.verdict === "go" ? CheckCircle2 : AlertTriangle;
   return (
-    <div role="status" className="mt-3 rounded-lg border p-3" style={{ borderColor: `${tone.color}50`, background: tone.bg }}>
+    <div role="status" aria-busy={loading} className={`mt-3 rounded-lg border p-3 transition-opacity ${loading ? "opacity-60" : ""}`} style={{ borderColor: `${tone.color}50`, background: tone.bg }}>
       <div className="flex items-center gap-2" style={{ color: tone.color }}>
         <Icon size={compact ? 15 : 18} className="shrink-0" />
         <span className="flex-1 text-[13px] font-semibold leading-snug">{assessment.label}</span>
       </div>
+      <div className="mt-1 text-[10px] text-white/50">Simulation-based estimate · generic lander</div>
       <div className="mt-1.5 space-y-1 text-[11.5px] leading-snug text-white/80">
         {(compact ? assessment.reasons.slice(0, 1) : assessment.reasons).map((reason) => <p key={reason}>{reason}</p>)}
       </div>

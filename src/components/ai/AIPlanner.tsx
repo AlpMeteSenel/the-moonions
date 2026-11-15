@@ -6,7 +6,7 @@ import { fmtDist } from "@/lib/geo";
 import { useStore } from "@/lib/store";
 import type { AIPlan } from "@/lib/types";
 import { fmtTime } from "@/lib/ui";
-import { SEQ_GRADIENT, pct, seqColor } from "./palette";
+import { LAND_GRADIENT, landSolid, pct } from "./palette";
 import Source from "./Source";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
@@ -97,7 +97,7 @@ function Heatmap({ plan }: { plan: AIPlan }) {
         Region × touchdown time: best landing spot, weighted by viable area <Source kind="ai" />
         <span className="ml-auto flex items-center gap-1.5 font-normal normal-case tracking-normal text-white/45">
           0%
-          <span className="h-2 w-28 rounded-sm" style={{ background: SEQ_GRADIENT }} />
+          <span className="h-2 w-28 rounded-sm" style={{ background: LAND_GRADIENT }} />
           100%
           <span className="ml-2 inline-block h-2.5 w-2.5 rounded-[2px] ring-2 ring-white" /> AI pick
           <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-white" /> best time per site
@@ -120,7 +120,7 @@ function Heatmap({ plan }: { plan: AIPlan }) {
                 return (
                   <button
                     key={j}
-                    style={{ width: cellW, background: seqColor(p) }}
+                    style={{ width: cellW, background: landSolid(p) }}
                     onMouseEnter={() => setHover({ i, j })}
                     onClick={() => pick(site_ids[i], times[j])}
                     className={`relative min-w-0 rounded-[2px] ${isPrimary ? "z-10 ring-2 ring-white" : isCurrent ? "z-10 ring-1 ring-sky-200" : ""}`}

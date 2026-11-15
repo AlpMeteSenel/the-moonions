@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useRegion, useRegionLoading, useSelected, useStore } from "@/lib/store";
 import type { Health } from "@/lib/types";
 import AIPlanner from "./ai/AIPlanner";
-import { SEQ_GRADIENT } from "./ai/palette";
+import { LAND_GRADIENT } from "./ai/palette";
 import ModelCardModal from "./ai/ModelCardModal";
 import CandidateAssessment from "./ai/CandidateAssessment";
 import CandidateRail from "./CandidateRail";
@@ -73,10 +73,10 @@ function SiteHint() {
           Colour = predicted landing success, including light, power and Earth contact:
           <div className="mt-1.5 flex items-center gap-1.5">
             <span>0%</span>
-            <span className="h-2 w-24 rounded" style={{ background: SEQ_GRADIENT }} />
+            <span className="h-2 w-24 rounded" style={{ background: LAND_GRADIENT }} />
             <span>100%</span>
           </div>
-          <div className="mt-1 text-[10px] text-white/50">Dark = low success · light blue = high success</div>
+          <div className="mt-1 text-[10px] text-white/50">Green shows higher success estimated under the generic lander simulation. Grey can mean low estimates or unavailable coverage.</div>
         </>
       ) : (
         <>
@@ -111,6 +111,9 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#02030a] text-white">
       <TopBar />
+      <div className="shrink-0 border-b border-amber-300/15 bg-amber-300/5 px-4 py-1.5 text-[11px] text-amber-100/85">
+        Real NASA/JPL/USGS terrain and orbit data. Landing probabilities, battery and divert results use simulation assumptions; verified CLPS vehicle specifications are missing. Region centres are approximate.
+      </div>
       <div className="flex min-h-0 flex-1">
         <CandidateRail />
         <main className="relative flex min-w-0 flex-1 flex-col">

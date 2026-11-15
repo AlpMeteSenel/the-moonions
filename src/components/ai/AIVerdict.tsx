@@ -5,7 +5,7 @@ import { Area, AreaChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Too
 import { aiTimelineKey, useAI, useAILoading, useStore } from "@/lib/store";
 import type { AIDriver, AITimeline, HeadKey, Site } from "@/lib/types";
 import { fmtTime } from "@/lib/ui";
-import { DIVERGING, HEAD_META, pct, seqColor } from "./palette";
+import { DIVERGING, HEAD_META, landSolid, pct } from "./palette";
 import Source from "./Source";
 
 const HEAD_ICON: Record<HeadKey, typeof Sun> = { touchdown: Mountain, lit0: Sun, energy_ok: BatteryCharging, comms_ok: Radio };
@@ -32,7 +32,7 @@ function HeadRow({ k, p }: { k: HeadKey; p: number }) {
       <Icon size={14} className="shrink-0 text-white/50" />
       <span className="w-40 shrink-0 text-[12px] text-white/80">{HEAD_META[k].label}</span>
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(2, p * 100)}%`, background: seqColor(0.35 + p * 0.65) }} />
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(2, p * 100)}%`, background: landSolid(0.5 + p * 0.5) }} />
       </div>
       <span className="w-10 text-right text-[12px] font-semibold tabular-nums text-white/90">{pct(p)}</span>
     </div>
@@ -110,12 +110,12 @@ function BestTimes({ tl, landingTime, onPick }: { tl?: AITimeline; landingTime: 
           >
             <defs>
               <linearGradient id="aig" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3987e5" stopOpacity={0.55} />
-                <stop offset="100%" stopColor="#3987e5" stopOpacity={0.03} />
+                <stop offset="0%" stopColor="#10b981" stopOpacity={0.55} />
+                <stop offset="100%" stopColor="#10b981" stopOpacity={0.03} />
               </linearGradient>
             </defs>
             {tl.windows.map((w) => (
-              <ReferenceArea key={w.start} x1={new Date(w.start).getTime()} x2={new Date(w.end).getTime()} fill="#3987e5" fillOpacity={0.08} stroke="none" />
+              <ReferenceArea key={w.start} x1={new Date(w.start).getTime()} x2={new Date(w.end).getTime()} fill="#10b981" fillOpacity={0.08} stroke="none" />
             ))}
             <XAxis
               dataKey="t"
@@ -135,7 +135,7 @@ function BestTimes({ tl, landingTime, onPick }: { tl?: AITimeline; landingTime: 
             />
             <ReferenceLine y={0.5} stroke="rgba(255,255,255,0.15)" strokeDasharray="3 3" />
             <ReferenceLine x={lt} stroke="#e2e8f0" strokeWidth={1.5} />
-            <Area type="monotone" dataKey="p" stroke="#3987e5" strokeWidth={2} fill="url(#aig)" isAnimationActive={false} />
+            <Area type="monotone" dataKey="p" stroke="#10b981" strokeWidth={2} fill="url(#aig)" isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -225,7 +225,7 @@ export default function AIVerdict({ site }: { site: Site }) {
         </div>
       )}
 
-      <SectionTitle source="computed">Physics checks for this time</SectionTitle>
+      <SectionTitle source="simulated">Checks under the generic mission model</SectionTitle>
       <div className="space-y-1">
         {ai.checks?.map((c) => {
           const Icon = HEAD_ICON[c.key];

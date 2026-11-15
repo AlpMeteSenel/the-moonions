@@ -44,11 +44,11 @@ function useHeightPixels(url: string) {
 
 /** A polar-stereographic cap built from the LOLA 80 m polar DEM (no pole pinching). */
 function useOverlay(url: string | null | undefined) {
-  const [tex, setTex] = useState<THREE.Texture | null>(null);
+  const [loaded, setLoaded] = useState<{ url: string; tex: THREE.Texture } | null>(null);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     if (!url) {
-      setTex(null);
+      setLoaded(null);
       return;
     }
     let live = true;
@@ -57,20 +57,20 @@ function useOverlay(url: string | null | undefined) {
       (t) => {
         if (!live) return;
         t.colorSpace = THREE.SRGBColorSpace;
-        setTex((old) => {
-          old?.dispose();
-          return t;
+        setLoaded((old) => {
+          old?.tex.dispose();
+          return { url, tex: t };
         });
         invalidate();
       },
       undefined,
-      () => live && setTex(null),
+      () => live && setLoaded(null),
     );
     return () => {
       live = false;
     };
   }, [url, invalidate]);
-  return tex;
+  return loaded?.url === url ? loaded.tex : null;
 }
 
 export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pole: "s" | "n"; meta: CapMeta; exaggeration: number; overlayUrl?: string | null }) {
@@ -156,7 +156,7 @@ export default function PolarCap({ pole, meta, exaggeration, overlayUrl }: { pol
       </mesh>
       {overlay && (
         <mesh geometry={geom} raycast={() => null} renderOrder={2}>
-          <meshBasicMaterial ref={holeMaterial} map={overlay} transparent opacity={0.8} depthWrite={false} polygonOffset polygonOffsetFactor={-2} side={THREE.DoubleSide} toneMapped={false} />
+          <meshBasicMaterial ref={holeMaterial} map={overlay} transparent opacity={1} depthWrite={false} polygonOffset polygonOffsetFactor={-2} side={THREE.DoubleSide} toneMapped={false} />
         </mesh>
       )}
     </group>

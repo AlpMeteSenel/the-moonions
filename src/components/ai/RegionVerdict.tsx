@@ -7,7 +7,7 @@ import { halfSizeOf, useRegion, useRegionLoading, useRegionTimeline, useStore } 
 import type { LandingZone, RegionTimeline, Site } from "@/lib/types";
 import { fmtTime } from "@/lib/ui";
 import { MIN_VIABLE_SHARE, REGION_CONSTRAINTS, regionAssessment, sharePercent } from "@/lib/regionAssessment";
-import { pct, seqColor } from "./palette";
+import { landSolid, pct } from "./palette";
 import Source from "./Source";
 
 export const ZONE_PRIMARY = "#22d3ee";
@@ -28,7 +28,7 @@ function Share({ label, value, source }: { label: string; value: number; source:
     <div className="flex items-center gap-2.5 py-0.5">
       <span className="w-36 shrink-0 text-[12px] text-white/75">{label}</span>
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${value * 100}%`, background: limited ? "#f87171" : value < 0.5 ? "#fbbf24" : seqColor(0.35 + value * 0.65) }} />
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${value * 100}%`, background: limited ? "#f87171" : value < 0.5 ? "#fbbf24" : landSolid(0.5 + value * 0.5) }} />
       </div>
       <span className={`w-12 text-right text-[12px] font-semibold tabular-nums ${limited ? "text-red-300" : "text-white/90"}`}>{sharePercent(value)}</span>
       <Source kind={source} />
@@ -106,14 +106,14 @@ function Windows({ tl, landingTime, onPick }: { tl?: RegionTimeline; landingTime
               formatter={(v, n) => [pct(Number(v)), n === "v" ? "Region viable" : "Best spot"]}
             />
             <ReferenceLine x={lt} stroke="#e2e8f0" strokeWidth={1.5} />
-            <Area type="stepAfter" dataKey="v" stroke="#3987e5" fill="#3987e5" fillOpacity={0.3} strokeWidth={1.5} isAnimationActive={false} />
+            <Area type="stepAfter" dataKey="v" stroke="#10b981" fill="#10b981" fillOpacity={0.3} strokeWidth={1.5} isAnimationActive={false} />
             <Line type="stepAfter" dataKey="b" stroke="#cde2fb" strokeWidth={1.2} dot={false} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className="mb-1.5 flex gap-3 text-[10px] text-white/45">
         <span className="flex items-center gap-1">
-          <span className="h-2 w-3 rounded-sm bg-[#3987e5]/60" /> share of region viable
+          <span className="h-2 w-3 rounded-sm bg-[#10b981]/60" /> share of region viable
         </span>
         <span className="flex items-center gap-1">
           <span className="h-0.5 w-3 bg-[#cde2fb]" /> best landing spot
@@ -175,14 +175,14 @@ export default function RegionVerdict({ site }: { site: Site }) {
         )}
       </div>
 
-      {!r || loading ? (
+      {!r ? (
         <div className="flex items-center gap-2 py-6 text-sm text-white/50">
           <Loader2 size={14} className="animate-spin" /> Mapping landing success across the region…
         </div>
       ) : !r.available ? (
         <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 text-[12px] text-white/60">The AI model isn&apos;t trained yet.</div>
       ) : (
-        <>
+        <div aria-busy={loading} className={`transition-opacity ${loading ? "opacity-60" : ""}`}>
           <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-white/45">
@@ -226,7 +226,7 @@ export default function RegionVerdict({ site }: { site: Site }) {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       <Title source="ai">Landing windows</Title>

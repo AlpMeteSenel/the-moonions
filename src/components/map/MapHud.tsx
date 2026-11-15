@@ -3,7 +3,7 @@
 import { Crosshair, Globe2, History, Moon } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { fmtTime } from "@/lib/ui";
-import { SEQ_GRADIENT } from "../ai/palette";
+import { LAND_GRADIENT } from "../ai/palette";
 
 /** Elevation of a body above the horizon at the south pole ≈ −(its sub-point latitude). */
 const atSouthPole = (subLat: number) => -subLat;
@@ -45,13 +45,13 @@ export default function MapHud() {
         )}
         <div className="mt-3 border-t border-white/10 pt-2.5">
           <div className="flex items-center gap-2">
-            <span className="h-3.5 w-3.5 rounded-[3px] border border-white/70" style={{ background: "#3987e5" }} />
+            <span className="h-3.5 w-3.5 rounded-[3px] border border-white/70" style={{ background: "#10b981" }} />
             <span className="text-[11.5px] font-medium text-white/85">Candidate landing region</span>
           </div>
           <div className="mt-1.5 text-[10.5px] leading-snug text-white/55">Colour = share of the region where a landing at this time is predicted to succeed: safe touchdown (AI) with sunlight, power and an Earth link (physics).</div>
           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-white/50">
             <span>0%</span>
-            <span className="h-2 flex-1 rounded-sm" style={{ background: SEQ_GRADIENT }} />
+            <span className="h-2 flex-1 rounded-sm" style={{ background: LAND_GRADIENT }} />
             <span>100% landable</span>
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-white/60">

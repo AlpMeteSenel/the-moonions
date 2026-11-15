@@ -67,7 +67,7 @@ export default function TimeScrubber() {
           {tl?.available && site ? (
             <>
               <span className="flex items-center gap-1">
-                <span className="h-2 w-3 rounded-sm bg-[#3987e5]/70" /> {site.name.split(" · ")[0]}: landable share
+                <span className="h-2 w-3 rounded-sm bg-[#10b981]/70" /> {site.name.split(" · ")[0]}: landable share
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-1 w-3 rounded-sm bg-[#cde2fb]" /> landing windows
@@ -97,7 +97,7 @@ export default function TimeScrubber() {
       >
         <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <rect x="0" y="0" width="100" height="100" fill="rgba(255,255,255,0.03)" />
-          {area && <path d={area} fill="#3987e5" fillOpacity={0.45} stroke="#3987e5" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />}
+          {area && <path d={area} fill="#10b981" fillOpacity={0.45} stroke="#10b981" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />}
           {tl?.available &&
             tl.windows.map((w) => (
               <rect key={w.start} x={x(new Date(w.start).getTime())} y={0} width={Math.max(0.3, x(new Date(w.end).getTime()) - x(new Date(w.start).getTime()))} height={10} fill="#cde2fb" />

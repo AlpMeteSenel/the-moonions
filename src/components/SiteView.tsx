@@ -11,7 +11,7 @@ import { toWorld } from "@/lib/moonFrame";
 import { HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
 import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
 import type { AISiteMap, Evaluation, LandingZone, RegionAnalysis, TerrainPatch } from "@/lib/types";
-import { seqColor } from "./ai/palette";
+import { landColor } from "./ai/palette";
 import { ZONE_BACKUP, ZONE_PRIMARY } from "./ai/RegionVerdict";
 import { VERDICT } from "@/lib/ui";
 
@@ -71,6 +71,7 @@ function TerrainMesh({ t, slopeTint, aiMap }: { t: TerrainPatch; slopeTint: bool
     const pos = g.attributes.position as THREE.BufferAttribute;
     const colors = new Float32Array(pos.count * 3);
     const c = new THREE.Color();
+    const land = new THREE.Color();
     const n = t.size;
     const step = (2 * t.half_size_m) / (n - 1);
     for (let i = 0; i < pos.count; i++) {
@@ -78,7 +79,9 @@ function TerrainMesh({ t, slopeTint, aiMap }: { t: TerrainPatch; slopeTint: bool
       const east = (i % n) * step - t.half_size_m;
       const north = t.half_size_m - Math.floor(i / n) * step;
       if (aiMap?.available && Math.abs(east) <= aiMap.half_size_m && Math.abs(north) <= aiMap.half_size_m) {
-        c.set(seqColor(sampleAI(aiMap, east, north)));
+        // bare terrain where a landing would fail, green where it would succeed
+        const { rgb, a } = landColor(sampleAI(aiMap, east, north));
+        c.set("#8a8d91").lerp(land.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace), a);
       } else if (slopeTint) {
         slopeColor(t.slopes[i], c);
         if (aiMap?.available) c.multiplyScalar(0.55); // outside the region: dimmed context
@@ -241,10 +244,10 @@ function blendIntoGlobe(t: TerrainPatch, site: { lat: number; lon: number }, fra
 
 function sunOf(ev: Evaluation, real: boolean) {
   const sunF = ev.factors.find((f) => f.key === "sunlight");
-  const az = Number(sunF?.details.sun_azimuth_deg ?? 90);
-  const el = Number(sunF?.details.sun_elevation_deg ?? 20);
+  const az = Number(sunF?.details.sun_azimuth_deg);
+  const el = Number(sunF?.details.sun_elevation_deg);
   // Real light: the true Sun direction (grazing at the poles). Otherwise a high, readable light.
-  return { el, dir: real ? sunVectorLocal(az, Math.max(el, 1.5)) : sunVectorLocal(az, 45) };
+  return { el, dir: real ? sunVectorLocal(az, el) : sunVectorLocal(az, 45) };
 }
 
 function Scene({ t, ev, aiMap, region, frame }: { t: TerrainPatch; ev: Evaluation; aiMap: AISiteMap | null; region?: RegionAnalysis; frame: SiteFrame }) {
@@ -253,8 +256,8 @@ function Scene({ t, ev, aiMap, region, frame }: { t: TerrainPatch; ev: Evaluatio
   const setFocusZone = useStore((s) => s.setFocusZone);
   const { el, dir: sunDir } = sunOf(ev, real);
   const earthF = ev.factors.find((f) => f.key === "earth");
-  const eAz = Number(earthF?.details.earth_azimuth_deg ?? 0);
-  const eEl = Number(earthF?.details.earth_elevation_deg ?? 10);
+  const eAz = Number(earthF?.details.earth_azimuth_deg);
+  const eEl = Number(earthF?.details.earth_elevation_deg);
   const earthDir = sunVectorLocal(eAz, eEl);
   const size = (2 * t.half_size_m) / 1000;
   const y0 = (sampleHeight(t, 0, 0) * V_EXAG) / 1000;
@@ -374,9 +377,9 @@ export function SiteSun() {
   const real = useStore((s) => s.realLighting);
   const frame = useSiteFrame(site);
   const target = useMemo(() => new THREE.Object3D(), []);
-  if (!site || !frame) return <ambientLight intensity={0.25} color="#9db4ff" />;
+  if (!site || !frame || !ev) return <ambientLight intensity={0.25} color="#9db4ff" />;
   const size = ((2 * patchHalfM(site)) / 1000) * KM;
-  const sun = ev ? sunOf(ev, real) : { el: 20, dir: sunVectorLocal(90, 45) };
+  const sun = sunOf(ev, real);
   const at = toWorld(frame.center);
   const dirWorld = toWorld(sun.dir.clone().applyMatrix4(new THREE.Matrix4().extractRotation(frame.matrix)));
   target.position.copy(at);

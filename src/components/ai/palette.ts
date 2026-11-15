@@ -24,6 +24,45 @@ export function seqColor(p: number): string {
   return lerpHex(BLUE_RAMP[i], BLUE_RAMP[i + 1], x - i);
 }
 
+/**
+ * Landing-success encoding for maps: one hue (the GO green), so "can I land here?" reads at a
+ * glance on grey terrain. Below ~30% nothing is drawn (the bare terrain means "no"); above it the
+ * green gets stronger and brighter. Mirrored in the backend polar map (ai_polar.png).
+ */
+const LAND_STOPS: [number, [number, number, number], number][] = [
+  [0.3, [6, 95, 70], 0],
+  [0.5, [5, 150, 105], 0.45],
+  [0.7, [16, 185, 129], 0.75],
+  [0.85, [52, 211, 153], 0.88],
+  [1.0, [167, 243, 208], 0.95],
+];
+
+/** Probability → { rgb, alpha } for map overlays (alpha 0 = leave the terrain as is). */
+export function landColor(p: number): { rgb: [number, number, number]; a: number } {
+  const x = Math.max(0, Math.min(1, p));
+  if (x <= LAND_STOPS[0][0]) return { rgb: LAND_STOPS[0][1], a: 0 };
+  for (let i = 0; i < LAND_STOPS.length - 1; i++) {
+    const [p0, c0, a0] = LAND_STOPS[i];
+    const [p1, c1, a1] = LAND_STOPS[i + 1];
+    if (x <= p1) {
+      const f = (x - p0) / (p1 - p0);
+      return { rgb: c0.map((v, k) => v + (c1[k] - v) * f) as [number, number, number], a: a0 + (a1 - a0) * f };
+    }
+  }
+  const last = LAND_STOPS[LAND_STOPS.length - 1];
+  return { rgb: last[1], a: last[2] };
+}
+
+const PANEL_BG: [number, number, number] = [30, 41, 59];
+/** Landing success as a solid colour on a dark panel (bars, heatmap cells). */
+export function landSolid(p: number, bg: [number, number, number] = PANEL_BG): string {
+  const { rgb, a } = landColor(p);
+  return rgbToHex(rgb.map((v, i) => bg[i] + (v - bg[i]) * a));
+}
+
+/** Legend gradient for the landing map: bare terrain → bright green. */
+export const LAND_GRADIENT = `linear-gradient(90deg, #64748b 0%, #64748b 28%, ${[0.4, 0.55, 0.7, 0.85, 1].map((p) => `${landSolid(p, [100, 116, 139])} ${p * 100}%`).join(", ")})`;
+
 export const SEQ_GRADIENT = `linear-gradient(90deg, ${BLUE_RAMP.join(", ")})`;
 
 export const DIVERGING = { pos: "#3987e5", neg: "#e66767", mid: "#383835" };

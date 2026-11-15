@@ -10,7 +10,7 @@ import { toWorld } from "@/lib/moonFrame";
 import { halfSizeOf, hourOf, regionKey, useStore } from "@/lib/store";
 import type { LandingZone, RegionAnalysis, RegionSummary, Site } from "@/lib/types";
 import { LIMITED_VIABLE_SHARE, MIN_VIABLE_SHARE, regionAssessment, sharePercent } from "@/lib/regionAssessment";
-import { seqColor } from "../ai/palette";
+import { landSolid } from "../ai/palette";
 
 // Overlays sit just above the rendered terrain (sphere units; 0.0003 ≈ 0.5 km at 2x relief)
 const ON_SURFACE = 0.00035;
@@ -108,7 +108,7 @@ const RegionFootprint = memo(function RegionFootprint({ S, site, summary, select
   }, [S, site.lat, site.lon, half]);
   const share = detail?.available ? detail.stats.viable_share : summary?.available ? (summary.viable_share ?? 0) : 0;
   const poor = look.verdict === "no-go";
-  const fill = look.verdict === null ? "#475569" : poor ? "#64748b" : seqColor(0.2 + share * 0.8);
+  const fill = look.verdict === null ? "#475569" : poor ? "#64748b" : landSolid(0.55 + share * 0.45);
   const fillOpacity = poor ? 0.16 : selected ? 0.6 : hover ? 0.52 : 0.3 + share * 0.3;
   const lineColor = selected ? "#22d3ee" : hover ? "#ffffff" : look.verdict ? OUTLINE[look.verdict] : "#94a3b8";
   const showLabel = selected || hover || labelSlot;

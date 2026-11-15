@@ -61,8 +61,9 @@ function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   const showHazard = useStore((s) => s.showHazard && s.view === "globe");
   const showAiMap = useStore((s) => s.showAiMap);
   const aiReady = useStore((s) => Boolean(s.modelCard?.success_model));
-  const landingTime = useStore((s) => s.landingTime);
-  const aiOverlay = showAiMap && aiReady ? `${API_URL}/api/ai/polar-map.png?time=${encodeURIComponent(landingTime.slice(0, 13) + ":00:00Z")}` : null;
+  const landingTime = useStore((s) => s.settledTime);
+  const selectedTime = useStore((s) => s.landingTime);
+  const aiOverlay = showAiMap && aiReady && landingTime === selectedTime ? `${API_URL}/api/ai/polar-map.png?time=${encodeURIComponent(landingTime.slice(0, 13) + ":00:00Z")}` : null;
   const placing = useStore((s) => s.placing);
   const addCustom = useStore((s) => s.addCustom);
   const [hover, setHover] = useState<{ lat: number; lon: number; p: THREE.Vector3 } | null>(null);
@@ -149,11 +150,11 @@ function SunLight() {
   useFrame(() => {
     if (!light.current) return;
     if (real && sun) light.current.position.copy(toWorld(latLonToVec3(sun.sun_lat, sun.sun_lon, 10)));
-    else light.current.position.copy(camera.position).normalize().multiplyScalar(10);
+    else if (!real) light.current.position.copy(camera.position).normalize().multiplyScalar(10);
   });
   return (
     <>
-      <directionalLight ref={light} intensity={real ? 3.2 : 2.4} color="#fff8ee" />
+      <directionalLight ref={light} intensity={real ? (sun ? 3.2 : 0) : 2.4} color="#fff8ee" />
       <ambientLight intensity={real ? 0.07 : 0.25} color="#9db4ff" />
     </>
   );
