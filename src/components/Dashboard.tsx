@@ -105,7 +105,20 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    init().catch((e) => setError(String(e.message ?? e)));
+    init()
+      .then(() => {
+        // deep link: ?site=<id>&t=<ISO time>&view=site|globe (shareable views, renders)
+        const q = new URLSearchParams(window.location.search);
+        const st = useStore.getState();
+        const site = q.get("site");
+        const t = q.get("t");
+        if (site && st.sites.some((x) => x.id === site)) {
+          const iso = t && !Number.isNaN(Date.parse(t)) ? new Date(t).toISOString() : st.landingTime;
+          st.setLandingTimeAndSelect(site, iso);
+          if (q.get("view") === "site") st.setView("site");
+        } else if (t && !Number.isNaN(Date.parse(t))) st.setLandingTime(new Date(t).toISOString());
+      })
+      .catch((e) => setError(String(e.message ?? e)));
     api.health().then(setHealth).catch((e) => setError(String(e.message ?? e)));
   }, [init]);
 
