@@ -13,6 +13,6 @@ export async function GET() {
     const body = await r.text();
     return new Response(body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
   } catch {
-    return Response.json({ tracking_status: "offline", map: null, x_px: null, y_px: null, z_m: null, frame_age_ms: null, heading_deg: null, heading_source: null, imu_estimated: null }, { status: 503, headers: { "cache-control": "no-store" } });
+    return Response.json({ tracking_status: "offline", map: null, x_px: null, y_px: null, z_m: null, frame_age_ms: null, heading_deg: null, heading_source: null, imu_estimated: null }, { headers: { "cache-control": "no-store" } });
   }
 }
