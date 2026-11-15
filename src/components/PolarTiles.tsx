@@ -27,7 +27,7 @@ export interface PoleTiles {
 const R = 1737400;
 const SPLIT = 2.6; // split a tile when the camera is closer than SPLIT x its size
 const MAX_INFLIGHT = 6;
-const MAX_CACHED = 600;
+const MAX_CACHED = 350; // ~0.8 MB of mesh each; a full 3D site view needs ~250 incl. ancestors
 const CAP_KEEP_LAT = 79.85; // a hair past the globe band edge so there is no gap
 
 type Tile = { key: string; z: number; x: number; y: number; state: "idle" | "loading" | "ready" | "failed"; geom?: THREE.BufferGeometry; dn?: Int16Array; used: number };
@@ -361,7 +361,9 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
     // evict least-recently-used tiles that are not on screen
     if (tiles.current.size > MAX_CACHED) {
       const shown = new Set(out);
-      const old = [...tiles.current.values()].filter((t) => !shown.has(t.key) && t.state !== "loading").sort((p, q) => p.used - q.used);
+      // never evict what this frame's selection touched (visible tiles *and* their ancestors, which
+      // the selection walks through): evicting a parent made it reload every frame
+      const old = [...tiles.current.values()].filter((t) => t.used < now && !shown.has(t.key) && t.state !== "loading").sort((p, q) => p.used - q.used);
       for (const t of old.slice(0, tiles.current.size - MAX_CACHED)) {
         t.geom?.dispose();
         tiles.current.delete(t.key);
