@@ -1,7 +1,7 @@
 "use client";
 
 import { useLoader, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { texture } from "@/lib/api";
 import { HeaderTextureLoader, blobUrl } from "@/lib/net";
@@ -43,32 +43,41 @@ function useHeightPixels(url: string) {
 }
 
 /** A polar-stereographic cap built from the LOLA 80 m polar DEM (no pole pinching). */
+/**
+ * Loads the AI map image for `url` and keeps showing the newest frame that has arrived: while the
+ * time moves (playback), downloads finish out of order; an older frame never replaces a newer one,
+ * and a newer download is never thrown away just because the time has moved on again.
+ */
 export function useOverlay(url: string | null | undefined) {
-  const [loaded, setLoaded] = useState<{ url: string; tex: THREE.Texture } | null>(null);
+  const [loaded, setLoaded] = useState<{ url: string; seq: number; tex: THREE.Texture } | null>(null);
   const invalidate = useThree((s) => s.invalidate);
+  const seq = useRef(0);
   useEffect(() => {
     if (!url) {
-      setLoaded(null);
+      setLoaded((old) => {
+        old?.tex.dispose();
+        return null;
+      });
       return;
     }
-    let live = true;
+    const mine = ++seq.current;
     new HeaderTextureLoader().load(
       url,
       (t) => {
-        if (!live) return;
         t.colorSpace = THREE.SRGBColorSpace;
         setLoaded((old) => {
+          if (old && old.seq > mine) {
+            t.dispose(); // a newer frame is already on screen
+            return old;
+          }
           old?.tex.dispose();
-          return { url, tex: t };
+          return { url, seq: mine, tex: t };
         });
         invalidate();
       },
       undefined,
-      () => live && setLoaded(null),
+      () => undefined,
     );
-    return () => {
-      live = false;
-    };
   }, [url, invalidate]);
   // keep showing the previous map until the new hour has loaded (no blink while scrubbing)
   return url && loaded ? loaded.tex : null;

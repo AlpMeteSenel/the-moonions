@@ -662,6 +662,21 @@ export function useSelected() {
   return useStore((s) => s.sites.find((x) => x.id === s.selectedId) ?? null);
 }
 
+/**
+ * Region summaries for the shown time, or the nearest earlier hour already loaded (never a later
+ * one): during playback the colours only ever move forward in time instead of snapping back.
+ */
+export function useSummariesAt() {
+  return useStore((s) => {
+    const hour = hourOf(s.landingTime);
+    const exact = s.summaries[hour];
+    if (exact) return exact;
+    let best: string | null = null;
+    for (const k in s.summaries) if (k <= hour && (best === null || k > best)) best = k;
+    return best ? s.summaries[best] : s.lastSummaries;
+  });
+}
+
 export function useEval(id: string | null | undefined) {
   return useStore((s) => (id ? s.evals[evalKey(id, s)] ?? s.lastEval[id] : undefined));
 }

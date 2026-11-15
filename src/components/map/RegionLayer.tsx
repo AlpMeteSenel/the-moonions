@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { latLonToVec3, offsetLatLon } from "@/lib/geo";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
-import { halfSizeOf, hourOf, regionKey, useStore } from "@/lib/store";
+import { halfSizeOf, regionKey, useStore, useSummariesAt } from "@/lib/store";
 import type { LandingZone, RegionAnalysis, RegionSummary, Site } from "@/lib/types";
 import { LIMITED_VIABLE_SHARE, MIN_VIABLE_SHARE, regionAssessment, sharePercent } from "@/lib/regionAssessment";
 import { landSolid } from "../ai/palette";
@@ -284,7 +284,7 @@ function useLabelSlots(S: Surface, regions: Site[], summaries: Record<string, Re
 function Regions({ S }: { S: Surface }) {
   const sites = useStore((s) => s.sites);
   const selectedId = useStore((s) => s.selectedId);
-  const summaries = useStore((s) => s.summaries[hourOf(s.landingTime)] ?? s.lastSummaries);
+  const summaries = useSummariesAt();
   const regions = useMemo(() => sites.filter((s) => s.group !== "Historic landing"), [sites]);
   const slots = useLabelSlots(S, regions, summaries, selectedId);
   return (

@@ -215,6 +215,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
   const [visible, setVisible] = useState<string[]>([]);
   const frustum = useMemo(() => new THREE.Frustum(), []);
   const pm = useMemo(() => new THREE.Matrix4(), []);
+  const inv = useMemo(() => new THREE.Matrix4(), []);
   const sphere = useMemo(() => new THREE.Sphere(), []);
 
   useEffect(() => {
@@ -260,7 +261,9 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
     last.current.m.copy(camera.matrixWorld);
     last.current.v = version.current;
 
-    pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    // the renderer refreshes matrixWorldInverse only when it draws: derive it from this frame's pose
+    inv.copy(camera.matrixWorld).invert();
+    pm.multiplyMatrices(camera.projectionMatrix, inv);
     frustum.setFromProjectionMatrix(pm);
     const cam = camera.position;
     const half = info.half_size_m;

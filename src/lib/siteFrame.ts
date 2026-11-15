@@ -108,18 +108,26 @@ export function holeMaterial(m: THREE.Material | null, drape = false) {
       )
       .replace(
         "#include <clipping_planes_fragment>",
-        "#include <clipping_planes_fragment>\nif (uHoleOn > 0.5) { vec3 hd = vHolePos - uHoleC; if (abs(dot(hd, uHoleE)) < uHoleHalf && abs(dot(hd, uHoleN)) < uHoleHalf && dot(vHolePos, uHoleC) > 0.0) discard; }",
+        "#include <clipping_planes_fragment>\n" + (drape ? "float shadowArea = 0.0;\n" : "") + "if (uHoleOn > 0.5) { vec3 hd = vHolePos - uHoleC; if (abs(dot(hd, uHoleE)) < uHoleHalf && abs(dot(hd, uHoleN)) < uHoleHalf && dot(vHolePos, uHoleC) > 0.0) discard; }",
+      );
+    if (drape)
+      // terrain shadows only inside the site area (the shadow map covers just that area; outside it
+      // they would stop at the edges of its frustum in straight lines)
+      sh.fragmentShader = sh.fragmentShader.replace(
+        "#include <lights_fragment_begin>",
+        THREE.ShaderChunk.lights_fragment_begin.replaceAll("( directLight.visible && receiveShadow )", "( directLight.visible && receiveShadow && shadowArea > 0.5 )"),
       );
     if (drape)
       sh.fragmentShader = sh.fragmentShader.replace(
         "#include <map_fragment>",
         "#include <map_fragment>\n" +
           "if (uDrapeOn > 0.5) { vec3 dd = vHolePos - uDrapeC; vec2 q = vec2(dot(dd, uDrapeE), dot(dd, uDrapeN)) / uDrapeHalf; float m = max(abs(q.x), abs(q.y));" +
-          " if (m < uDrapeOuter && dot(vHolePos, uDrapeC) > 0.0) {" +
+          " if (m < uDrapeOuter && dot(vHolePos, uDrapeC) > 0.0) { shadowArea = 1.0;" +
           "  vec3 slopeTint = slopeColor(trueSlopeDeg(vHolePos));" +
-          "  if (m < 1.0 && uDrapeAi < 0.5) diffuseColor.rgb = slopeTint;" +
-          "  else if (m < 1.0) { vec4 dc = texture2D(uDrapeTex, q * 0.5 + 0.5); diffuseColor.rgb = mix(vec3(0.254, 0.266, 0.282), dc.rgb, dc.a); }" + // grey #8a8d91 (linear) under the AI colours
-          "  else diffuseColor.rgb = slopeTint * (uDrapeAi > 0.5 ? 0.55 : 1.0);" + // slope context around the region (dimmed under an AI map)
+          // keep the real surface colour: AI map blended over it inside the region; without an AI
+          // map, a half-strength slope tint over the site area
+          "  if (uDrapeAi < 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, slopeTint, 0.5);" +
+          "  else if (m < 1.0) { vec4 dc = texture2D(uDrapeTex, q * 0.5 + 0.5); diffuseColor.rgb = mix(diffuseColor.rgb, dc.rgb, dc.a * 0.85); }" +
           " } }",
       );
   };
