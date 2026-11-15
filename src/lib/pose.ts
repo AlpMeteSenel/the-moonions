@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 
 export interface Pose {
-  map: string | null;
+  /** Tracking map the pixel coordinates refer to. */
+  map: { id: string; width_px: number; height_px: number } | null;
   tracking_status: string;
   x_px: number | null;
   y_px: number | null;
