@@ -242,6 +242,20 @@ export interface ModelCard {
     calibration_test: { bin: [number, number]; predicted: number; actual: number; n: number }[];
     training_curves: Record<string, { epoch: number; train_loss: number; val_mae: number; val_spearman: number }[]>;
     limitations: string[];
+    training?: {
+      optimizer: string;
+      schedule: string;
+      batch_size: number;
+      max_epochs: number;
+      early_stopping_patience: number;
+      selection: string;
+      loss: string;
+      augmentation: string;
+      precision: string;
+      ensemble_members: Record<string, number>;
+      parameters: Record<string, number>;
+      architecture: Record<string, string>;
+    };
   };
 }
 
