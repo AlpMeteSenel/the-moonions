@@ -54,6 +54,25 @@ export const HOLE = {
   uHoleHalf: { value: 0 },
 };
 
+/** Per-pixel ground slope (deg, true scale: the drawn relief is x2) and the patch's slope ramp, in GLSL. */
+const SLOPE_GLSL = `
+float trueSlopeDeg(vec3 p) {
+  vec3 n = normalize(cross(dFdx(p), dFdy(p)));
+  float c = clamp(abs(dot(n, normalize(p))), 0.0, 1.0);
+  float t = sqrt(max(1.0 - c * c, 0.0)) / max(c, 1e-4);
+  return degrees(atan(t / 2.0));
+}
+vec3 slopeColor(float s) {
+  // safe -> marginal -> unsafe, as in the old site patch (8 / 15 deg lander limits); linear RGB
+  vec3 c0 = vec3(0.216, 0.258, 0.262); vec3 c1 = vec3(0.319, 0.376, 0.381); vec3 c2 = vec3(0.672, 0.456, 0.102);
+  vec3 c3 = vec3(0.745, 0.198, 0.041); vec3 c4 = vec3(0.527, 0.039, 0.025);
+  if (s < 4.0) return mix(c0, c1, s / 4.0);
+  if (s < 8.0) return mix(c1, c2, (s - 4.0) / 4.0);
+  if (s < 12.0) return mix(c2, c3, (s - 8.0) / 4.0);
+  return mix(c3, c4, clamp((s - 12.0) / 6.0, 0.0, 1.0));
+}
+`;
+
 /** AI landing-success map draped on the tiled terrain inside the site region (3D site view). */
 export const DRAPE = {
   uDrapeOn: { value: 0 },
@@ -62,6 +81,10 @@ export const DRAPE = {
   uDrapeE: { value: new THREE.Vector3(1, 0, 0) },
   uDrapeN: { value: new THREE.Vector3(0, 0, 1) },
   uDrapeHalf: { value: 1 },
+  /** Slope-tinted surround out to this many region half-sizes (the old patch extent). */
+  uDrapeOuter: { value: 1.12 },
+  /** 1 when an AI map is draped inside the region; 0 = slope colours there too. */
+  uDrapeAi: { value: 0 },
 };
 
 /**
@@ -81,7 +104,7 @@ export function holeMaterial(m: THREE.Material | null, drape = false) {
       .replace(
         "#include <common>",
         "#include <common>\nvarying vec3 vHolePos;\nuniform float uHoleOn;\nuniform vec3 uHoleC;\nuniform vec3 uHoleE;\nuniform vec3 uHoleN;\nuniform float uHoleHalf;" +
-          (drape ? "\nuniform float uDrapeOn;\nuniform sampler2D uDrapeTex;\nuniform vec3 uDrapeC;\nuniform vec3 uDrapeE;\nuniform vec3 uDrapeN;\nuniform float uDrapeHalf;" : ""),
+          (drape ? "\nuniform float uDrapeOn;\nuniform sampler2D uDrapeTex;\nuniform vec3 uDrapeC;\nuniform vec3 uDrapeE;\nuniform vec3 uDrapeN;\nuniform float uDrapeHalf;\nuniform float uDrapeOuter;\nuniform float uDrapeAi;\n" + SLOPE_GLSL : ""),
       )
       .replace(
         "#include <clipping_planes_fragment>",
@@ -90,7 +113,14 @@ export function holeMaterial(m: THREE.Material | null, drape = false) {
     if (drape)
       sh.fragmentShader = sh.fragmentShader.replace(
         "#include <map_fragment>",
-        "#include <map_fragment>\nif (uDrapeOn > 0.5) { vec3 dd = vHolePos - uDrapeC; vec2 q = vec2(dot(dd, uDrapeE), dot(dd, uDrapeN)) / uDrapeHalf; if (abs(q.x) < 1.0 && abs(q.y) < 1.0 && dot(vHolePos, uDrapeC) > 0.0) { vec4 dc = texture2D(uDrapeTex, q * 0.5 + 0.5); diffuseColor.rgb = mix(diffuseColor.rgb, dc.rgb, dc.a); } }",
+        "#include <map_fragment>\n" +
+          "if (uDrapeOn > 0.5) { vec3 dd = vHolePos - uDrapeC; vec2 q = vec2(dot(dd, uDrapeE), dot(dd, uDrapeN)) / uDrapeHalf; float m = max(abs(q.x), abs(q.y));" +
+          " if (m < uDrapeOuter && dot(vHolePos, uDrapeC) > 0.0) {" +
+          "  vec3 slopeTint = slopeColor(trueSlopeDeg(vHolePos));" +
+          "  if (m < 1.0 && uDrapeAi < 0.5) diffuseColor.rgb = slopeTint;" +
+          "  else if (m < 1.0) { vec4 dc = texture2D(uDrapeTex, q * 0.5 + 0.5); diffuseColor.rgb = mix(vec3(0.254, 0.266, 0.282), dc.rgb, dc.a); }" + // grey #8a8d91 (linear) under the AI colours
+          "  else diffuseColor.rgb = slopeTint * (uDrapeAi > 0.5 ? 0.55 : 1.0);" + // slope context around the region (dimmed under an AI map)
+          " } }",
       );
   };
 }

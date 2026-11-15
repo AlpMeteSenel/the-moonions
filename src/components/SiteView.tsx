@@ -10,7 +10,10 @@ import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
 import { DRAPE, HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
-import { hasTiles, useTileEpoch } from "./PolarTiles";
+import { hasTiles, setTileFocus, useTileEpoch } from "./PolarTiles";
+
+const BLANK_TEX = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
+BLANK_TEX.needsUpdate = true;
 import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
 import type { AISiteMap, Evaluation, LandingZone, RegionAnalysis, TerrainPatch } from "@/lib/types";
 import { landColor } from "./ai/palette";
@@ -398,7 +401,7 @@ export function SiteLayer() {
 
   // the AI map painted onto the tiles inside the region
   const drapeTex = useMemo(() => {
-    if (!tiled || !aiMapFor(showAiMap, region)) return null;
+    if (!tiled || !aiMapFor(showAiMap, region)) return null; // no AI map: the shader shows slope colours
     const r = region!;
     const n = r.cells;
     const data = new Uint8Array(n * n * 4);
@@ -419,21 +422,35 @@ export function SiteLayer() {
     tex.needsUpdate = true;
     return tex;
   }, [tiled, showAiMap, region]);
+  // colour the tiles like the site patch (AI map in the region, slope tint around it), and load
+  // the site area at full tile detail whatever the camera distance
   useEffect(() => {
-    if (!drapeTex || !frame || !region?.available) return;
-    DRAPE.uDrapeTex.value = drapeTex;
+    if (!tiled || !frame || !site) return;
+    const regionHalf = region?.available ? region.half_size_m : half;
+    DRAPE.uDrapeTex.value = drapeTex ?? BLANK_TEX;
+    DRAPE.uDrapeAi.value = drapeTex ? 1 : 0;
     DRAPE.uDrapeC.value.copy(frame.center);
     DRAPE.uDrapeE.value.copy(frame.east);
     DRAPE.uDrapeN.value.copy(frame.north);
-    DRAPE.uDrapeHalf.value = (region.half_size_m / 1000) * KM;
+    DRAPE.uDrapeHalf.value = (regionHalf / 1000) * KM;
+    DRAPE.uDrapeOuter.value = patchHalfM(site) / regionHalf;
     DRAPE.uDrapeOn.value = 1;
     invalidate();
     return () => {
       DRAPE.uDrapeOn.value = 0;
-      drapeTex.dispose();
+      drapeTex?.dispose();
       invalidate();
     };
-  }, [drapeTex, frame, region, invalidate]);
+  }, [tiled, drapeTex, frame, region, site, half, invalidate]);
+  useEffect(() => {
+    if (!tiled || !site) return;
+    const pole = site.lat < 0 ? "s" : "n";
+    const rho = 2 * MOON_R_KM * 1000 * Math.tan(((90 - Math.abs(site.lat)) * Math.PI) / 360);
+    const lr = (site.lon * Math.PI) / 180;
+    setTileFocus(pole, { x: rho * Math.sin(lr), y: pole === "s" ? rho * Math.cos(lr) : -rho * Math.cos(lr), half: patchHalfM(site) * 1.05 });
+    invalidate();
+    return () => setTileFocus(pole, null);
+  }, [tiled, site, invalidate]);
 
   const aiMap = useMemo<AISiteMap | null>(
     () => (showAiMap && region?.available ? { available: true, half_size_m: region.half_size_m, cells: region.cells, success: region.success, touchdown: region.touchdown } : null),

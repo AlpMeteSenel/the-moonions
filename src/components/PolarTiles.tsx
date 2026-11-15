@@ -149,6 +149,13 @@ function bumpEpoch() {
   }, 400);
 }
 
+/** Area (stereographic metres) to load at full detail regardless of camera distance: the 3D site region. */
+const focus: Record<string, { x: number; y: number; half: number } | null> = {};
+export function setTileFocus(pole: "s" | "n", f: { x: number; y: number; half: number } | null) {
+  focus[pole] = f;
+  useTileEpoch.setState((s) => ({ epoch: s.epoch + 1 }));
+}
+
 /** Whether a pole is drawn from tiles (the 3D site view then uses them instead of a separate patch). */
 export const hasTiles = (pole: "s" | "n") => Boolean(registries[pole]);
 
@@ -204,7 +211,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
   const tiles = useRef(new Map<string, Tile>());
   const inflight = useRef(0);
   const version = useRef(0);
-  const last = useRef({ m: new THREE.Matrix4(), v: -1 });
+  const last = useRef({ m: new THREE.Matrix4(), v: -1, e: -1 });
   const [visible, setVisible] = useState<string[]>([]);
   const frustum = useMemo(() => new THREE.Frustum(), []);
   const pm = useMemo(() => new THREE.Matrix4(), []);
@@ -247,7 +254,9 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
 
   useFrame(() => {
     camera.updateMatrixWorld();
-    if (last.current.v === version.current && last.current.m.equals(camera.matrixWorld)) return;
+    const ep = useTileEpoch.getState().epoch;
+    if (last.current.v === version.current && last.current.m.equals(camera.matrixWorld) && last.current.e === ep) return;
+    last.current.e = ep;
     last.current.m.copy(camera.matrixWorld);
     last.current.v = version.current;
 
@@ -298,7 +307,12 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
         request(t, z * 10 + d);
         return;
       }
-      if (z < info.max_level && d < SPLIT * gg.sizeU) {
+      const f = focus[pole];
+      const size = (2 * half) / 2 ** z;
+      const fx0 = -half + x * size;
+      const fy1 = half - y * size;
+      const inFocus = Boolean(f && fx0 < f.x + f.half && fx0 + size > f.x - f.half && fy1 > f.y - f.half && fy1 - size < f.y + f.half);
+      if (z < info.max_level && (d < SPLIT * gg.sizeU || inFocus)) {
         const kids: [number, number, number][] = [];
         for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
           const k = geo(z + 1, 2 * x + dx, 2 * y + dy);
