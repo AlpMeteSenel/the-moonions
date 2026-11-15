@@ -85,6 +85,8 @@ export const DRAPE = {
   uDrapeOuter: { value: 1.12 },
   /** 1 when an AI map is draped inside the region; 0 = slope colours there too. */
   uDrapeAi: { value: 0 },
+  /** Shadows reach out to this many region half-sizes, fading over the outer 30% (no hard edge). */
+  uShadowOuter: { value: 6 },
 };
 
 /**
@@ -104,7 +106,7 @@ export function holeMaterial(m: THREE.Material | null, drape = false) {
       .replace(
         "#include <common>",
         "#include <common>\nvarying vec3 vHolePos;\nuniform float uHoleOn;\nuniform vec3 uHoleC;\nuniform vec3 uHoleE;\nuniform vec3 uHoleN;\nuniform float uHoleHalf;" +
-          (drape ? "\nuniform float uDrapeOn;\nuniform sampler2D uDrapeTex;\nuniform vec3 uDrapeC;\nuniform vec3 uDrapeE;\nuniform vec3 uDrapeN;\nuniform float uDrapeHalf;\nuniform float uDrapeOuter;\nuniform float uDrapeAi;\n" + SLOPE_GLSL : ""),
+          (drape ? "\nuniform float uDrapeOn;\nuniform sampler2D uDrapeTex;\nuniform vec3 uDrapeC;\nuniform vec3 uDrapeE;\nuniform vec3 uDrapeN;\nuniform float uDrapeHalf;\nuniform float uDrapeOuter;\nuniform float uDrapeAi;\nuniform float uShadowOuter;\n" + SLOPE_GLSL : ""),
       )
       .replace(
         "#include <clipping_planes_fragment>",
@@ -115,14 +117,17 @@ export function holeMaterial(m: THREE.Material | null, drape = false) {
       // they would stop at the edges of its frustum in straight lines)
       sh.fragmentShader = sh.fragmentShader.replace(
         "#include <lights_fragment_begin>",
-        THREE.ShaderChunk.lights_fragment_begin.replaceAll("( directLight.visible && receiveShadow )", "( directLight.visible && receiveShadow && shadowArea > 0.5 )"),
+        THREE.ShaderChunk.lights_fragment_begin
+          .replace("( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap", "( directLight.visible && receiveShadow && shadowArea > 0.0 ) ? mix( 1.0, getShadow( directionalShadowMap")
+          .replace("vDirectionalShadowCoord[ i ] ) : 1.0;", "vDirectionalShadowCoord[ i ] ), shadowArea ) : 1.0;"),
       );
     if (drape)
       sh.fragmentShader = sh.fragmentShader.replace(
         "#include <map_fragment>",
         "#include <map_fragment>\n" +
           "if (uDrapeOn > 0.5) { vec3 dd = vHolePos - uDrapeC; vec2 q = vec2(dot(dd, uDrapeE), dot(dd, uDrapeN)) / uDrapeHalf; float m = max(abs(q.x), abs(q.y));" +
-          " if (m < uDrapeOuter && dot(vHolePos, uDrapeC) > 0.0) { shadowArea = 1.0;" +
+          " if (dot(vHolePos, uDrapeC) > 0.0) shadowArea = 1.0 - smoothstep(uShadowOuter * 0.7, uShadowOuter, m);" +
+          " if (m < uDrapeOuter && dot(vHolePos, uDrapeC) > 0.0) {" +
           "  vec3 slopeTint = slopeColor(trueSlopeDeg(vHolePos));" +
           // keep the real surface colour: AI map blended over it inside the region; without an AI
           // map, a half-strength slope tint over the site area

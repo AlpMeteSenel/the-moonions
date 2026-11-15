@@ -12,6 +12,9 @@ import { toWorld } from "@/lib/moonFrame";
 import { DRAPE, HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
 import { setTileFocus, useTileEpoch, useTileShadows, useTilesInfo } from "./PolarTiles";
 
+/** Site shadows cover this many patch widths each way from the centre (then fade out). */
+const SHADOW_REACH = 3;
+
 const BLANK_TEX = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
 BLANK_TEX.needsUpdate = true;
 import { DEFAULT_HALF_SIZE, halfSizeOf, useEval, useRegion, useSelected, useStore } from "@/lib/store";
@@ -439,6 +442,7 @@ export function SiteLayer() {
     DRAPE.uDrapeN.value.copy(frame.north);
     DRAPE.uDrapeHalf.value = (regionHalf / 1000) * KM;
     DRAPE.uDrapeOuter.value = patchHalfM(site) / regionHalf;
+    DRAPE.uShadowOuter.value = (SHADOW_REACH * 2 * patchHalfM(site)) / regionHalf;
     DRAPE.uDrapeOn.value = 1;
     invalidate();
     return () => {
@@ -531,20 +535,20 @@ export function SiteSun() {
       <primitive object={target} />
       <directionalLight
         target={target}
-        position={at.clone().addScaledVector(dirWorld, size * 2)}
+        position={at.clone().addScaledVector(dirWorld, size * SHADOW_REACH * 3)}
         intensity={real ? (sun.el > -1 ? 3.2 : 0.5) : 2.4}
         color="#fff6e8"
         castShadow
         shadow-mapSize={[4096, 4096]}
-        shadow-camera-left={-size}
-        shadow-camera-right={size}
-        shadow-camera-top={size}
-        shadow-camera-bottom={-size}
+        shadow-camera-left={-size * SHADOW_REACH}
+        shadow-camera-right={size * SHADOW_REACH}
+        shadow-camera-top={size * SHADOW_REACH}
+        shadow-camera-bottom={-size * SHADOW_REACH}
         shadow-camera-near={size * 0.05}
-        shadow-camera-far={size * 6}
+        shadow-camera-far={size * SHADOW_REACH * 6}
         shadow-bias={-0.00005}
         // offset along the surface normal by ~1.5 shadow texels: no self-shadowing stripes on the tiles
-        shadow-normalBias={((2 * size) / 4096) * 1.5}
+        shadow-normalBias={((2 * size * SHADOW_REACH) / 4096) * 1.5}
       />
       {/* sky fill from the site's zenith (stands in for the old hemisphere light) */}
       <directionalLight position={at.clone().addScaledVector(toWorld(frame.up), size * 2)} target={target} intensity={real ? 0.7 : 1.1} color="#c7d2fe" />
