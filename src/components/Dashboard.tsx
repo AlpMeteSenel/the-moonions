@@ -111,9 +111,6 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#02030a] text-white">
       <TopBar />
-      <div className="shrink-0 border-b border-amber-300/15 bg-amber-300/5 px-4 py-1.5 text-[11px] text-amber-100/85">
-        Real NASA/JPL/USGS terrain and orbit data. Landing probabilities, battery and divert results use simulation assumptions; verified CLPS vehicle specifications are missing. Region centres are approximate.
-      </div>
       <div className="flex min-h-0 flex-1">
         <CandidateRail />
         <main className="relative flex min-w-0 flex-1 flex-col">
