@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Moonions · Lunar Landing Site Navigator",
+  title: "Plan Banana · Lunar Landing Site Navigator",
   description: "Explore, score and decide lunar landing sites with real NASA data",
 };
 

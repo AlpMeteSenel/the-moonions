@@ -83,7 +83,7 @@ export default function TopBar() {
       <div className="flex items-center gap-2.5 pr-2">
         <div className="h-6 w-6 rounded-full bg-[radial-gradient(circle_at_35%_35%,#f1f5f9,#64748b_55%,#0f172a)]" />
         <div className="leading-tight">
-          <div className="text-sm font-semibold tracking-wide text-white">Moonions</div>
+          <div className="text-sm font-semibold tracking-wide text-white">Plan Banana</div>
           <div className="whitespace-nowrap text-[10px] uppercase tracking-[0.18em] text-white/45">Landing Site Navigator</div>
         </div>
       </div>
