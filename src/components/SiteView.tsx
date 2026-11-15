@@ -530,14 +530,16 @@ export function SiteSun() {
         intensity={real ? (sun.el > -1 ? 3.2 : 0.5) : 2.4}
         color="#fff6e8"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[4096, 4096]}
         shadow-camera-left={-size}
         shadow-camera-right={size}
         shadow-camera-top={size}
         shadow-camera-bottom={-size}
         shadow-camera-near={size * 0.05}
         shadow-camera-far={size * 6}
-        shadow-bias={-0.0005}
+        shadow-bias={-0.00005}
+        // offset along the surface normal by ~1.5 shadow texels: no self-shadowing stripes on the tiles
+        shadow-normalBias={((2 * size) / 4096) * 1.5}
       />
       {/* sky fill from the site's zenith (stands in for the old hemisphere light) */}
       <directionalLight position={at.clone().addScaledVector(toWorld(frame.up), size * 2)} target={target} intensity={real ? 0.7 : 1.1} color="#c7d2fe" />

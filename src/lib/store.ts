@@ -119,6 +119,10 @@ interface State {
   setPlaySpeed: (h: number) => void;
   /** Advance playback by one frame (no full refresh; the AI map and region colours follow, throttled). */
   playStep: (hours: number) => void;
+  /** Move playback to an absolute hour (panels, zones, AI colours). */
+  playTo: (iso: string) => void;
+  /** Move only the Sun to a fractional time (every display frame while playing). */
+  playSun: (ms: number) => void;
   /** Fetch the selected region's analysis for the day block holding `iso` in one request (24 h). */
   prefetchRange: (id: string, iso: string) => Promise<void>;
   loadProposals: () => Promise<void>;
@@ -510,11 +514,17 @@ export const useStore = create<State>((set, get) => ({
       rangeDone.delete(key);
     }
   },
+  playSun: (ms) => {
+    const sun = sunAt(get().sunTrack, new Date(ms).toISOString());
+    if (sun) set({ sun });
+  },
   playStep: (hours) => {
     const t = new Date(get().landingTime).getTime() + hours * 3600e3;
-    const iso = new Date(Math.round(t / 3600e3) * 3600e3).toISOString();
+    get().playTo(new Date(Math.round(t / 3600e3) * 3600e3).toISOString());
+  },
+  playTo: (iso) => {
     const anchor = keepAnchor(iso, get().timeAnchor);
-    set({ landingTime: iso, timeAnchor: anchor, sun: sunAt(get().sunTrack, iso) ?? get().sun });
+    set({ landingTime: iso, timeAnchor: anchor, sun: get().playing ? get().sun : sunAt(get().sunTrack, iso) ?? get().sun }); // while playing the Sun moves per frame
     if (anchor !== get().sunTrackAnchor) void get().loadSunTrack();
     const sel = get().selectedId;
     if (sel) {

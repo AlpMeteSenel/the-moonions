@@ -9,15 +9,35 @@ const DAY = 86400e3;
 const SPEEDS = [1, 6, 24]; // hours of mission time per second
 
 /** Steps the touchdown time forward while playing: lighting moves every frame, data follows. */
+const DATA_TICK_MS = 250; // panels, zones and AI colours change at most 4x per second
+
+/**
+ * Playback: the Sun moves smoothly every display frame (cheap: lighting only), while the hour that
+ * drives the panels, zones and AI colours advances at most 4x per second, whatever the speed.
+ */
 function usePlayback() {
   const playing = useStore((s) => s.playing);
   const speed = useStore((s) => s.playSpeed);
   useEffect(() => {
     if (!playing) return;
-    const tickMs = Math.max(40, 1000 / speed);
-    const hoursPerTick = Math.max(1, Math.round((speed * tickMs) / 1000));
-    const id = setInterval(() => useStore.getState().playStep(hoursPerTick), tickMs);
-    return () => clearInterval(id);
+    let clock = new Date(useStore.getState().landingTime).getTime();
+    let last = performance.now();
+    let lastData = 0;
+    let raf = 0;
+    const frame = (now: number) => {
+      clock += (now - last) * speed * 3600; // speed h/s → ms of mission time per real ms
+      last = now;
+      const st = useStore.getState();
+      st.playSun(clock);
+      const hour = Math.floor(clock / 3600e3) * 3600e3;
+      if (now - lastData >= DATA_TICK_MS && hour !== new Date(st.landingTime).getTime()) {
+        lastData = now;
+        st.playTo(new Date(hour).toISOString());
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
   }, [playing, speed]);
 }
 const SPAN_DAYS = TRACK_DAYS;
