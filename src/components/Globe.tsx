@@ -15,22 +15,16 @@ import { evalKey, halfSizeOf, useStore } from "@/lib/store";
 import { VERDICT } from "@/lib/ui";
 import RegionLayer from "./map/RegionLayer";
 import PolarCap, { type CapMeta, useOverlay } from "./PolarCap";
-import PolarTiles, { type PoleTiles } from "./PolarTiles";
+import PolarTiles, { loadTilesInfo, type PoleTiles, useTilesInfo } from "./PolarTiles";
 import { SiteLayer, SiteSun } from "./SiteView";
 
 export interface TextureMeta {
   caps?: Record<string, CapMeta>;
 }
 
-function useTilesInfo() {
-  const [info, setInfo] = useState<Record<string, PoleTiles> | null>(null);
-  useEffect(() => {
-    fetch(`${API_URL}/api/tiles/info`, { headers: BACKEND_HEADERS })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then(setInfo)
-      .catch(() => setInfo({}));
-  }, []);
-  return info;
+function useTilesInfoShared() {
+  useEffect(() => loadTilesInfo(), []);
+  return useTilesInfo((s) => s.info);
 }
 
 /** LOD tiles for one cap, with the AI map draped on them. */
@@ -83,7 +77,7 @@ function HazardLayer() {
 
 function Moon({ onFlyTo }: { onFlyTo: (p: THREE.Vector3) => void }) {
   const meta = useTextureMeta();
-  const tilesInfo = useTilesInfo();
+  const tilesInfo = useTilesInfoShared();
   const caps = meta?.caps;
   const band = useBandGeometry(Boolean(caps?.cap_s));
   const [color, normal, height] = useLoader(HeaderTextureLoader, [texture("moon_color_4k.jpg"), texture("moon_normal_4k.jpg"), texture("moon_height_2k.png")]);

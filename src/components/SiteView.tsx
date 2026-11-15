@@ -10,7 +10,7 @@ import { landerState, TRACKER_SITE_ID, usePose } from "@/lib/pose";
 import { type Surface, useSurface } from "@/lib/heights";
 import { toWorld } from "@/lib/moonFrame";
 import { DRAPE, HOLE, KM, MOON_R_KM, patchHalfM, type SiteFrame, useSiteFrame } from "@/lib/siteFrame";
-import { hasTiles, setTileFocus, useTileEpoch } from "./PolarTiles";
+import { setTileFocus, useTileEpoch, useTileShadows, useTilesInfo } from "./PolarTiles";
 
 const BLANK_TEX = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
 BLANK_TEX.needsUpdate = true;
@@ -382,7 +382,12 @@ export function SiteLayer() {
   const surface = useSurface();
   const invalidate = useThree((s) => s.invalidate);
   // polar sites: the LOD tiles are the terrain (down to 20 m); elsewhere a detailed patch is set into the globe
-  const tiled = Boolean(site && Math.abs(site.lat) >= 80.3 && hasTiles(site.lat < 0 ? "s" : "n"));
+  const tilesInfo = useTilesInfo((s) => s.info);
+  const tiled = Boolean(site && Math.abs(site.lat) >= 80.3 && tilesInfo?.[site.lat < 0 ? "s" : "n"]);
+  useEffect(() => {
+    useTileShadows.setState({ on: tiled });
+    return () => useTileShadows.setState({ on: false });
+  }, [tiled]);
   const epoch = useTileEpoch((s) => s.epoch);
   const fitted = useMemo(() => (!tiled && patch && frame && surface && site ? blendIntoGlobe(patch, site, frame, surface, half) : null), [tiled, patch, frame, surface, site, half]);
   const sizeKm = site ? (2 * patchHalfM(site)) / 1000 : 0;

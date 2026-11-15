@@ -138,6 +138,21 @@ function buildGeometry(dn: Int16Array, south: boolean, z: number, tx: number, ty
   return geom;
 }
 
+/** The backend's tile pyramids (/api/tiles/info), loaded once; decides tiles vs patch everywhere. */
+export const useTilesInfo = create<{ info: Record<string, PoleTiles> | null }>(() => ({ info: null }));
+let tilesInfoLoading = false;
+export function loadTilesInfo() {
+  if (tilesInfoLoading) return;
+  tilesInfoLoading = true;
+  fetch(`${API_URL}/api/tiles/info`, { headers: BACKEND_HEADERS })
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((info) => useTilesInfo.setState({ info }))
+    .catch(() => useTilesInfo.setState({ info: {} }));
+}
+
+/** Tiles cast shadows only while they are the terrain of the 3D site view. */
+export const useTileShadows = create<{ on: boolean }>(() => ({ on: false }));
+
 /** Bumped (throttled) whenever tiles load, so overlays that sit on the terrain can re-fit. */
 export const useTileEpoch = create<{ epoch: number }>(() => ({ epoch: 0 }));
 let epochTimer: ReturnType<typeof setTimeout> | null = null;
@@ -213,6 +228,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
   const version = useRef(0);
   const last = useRef({ m: new THREE.Matrix4(), v: -1, e: -1 });
   const [visible, setVisible] = useState<string[]>([]);
+  const shadows = useTileShadows((s) => s.on);
   const frustum = useMemo(() => new THREE.Frustum(), []);
   const pm = useMemo(() => new THREE.Matrix4(), []);
   const inv = useMemo(() => new THREE.Matrix4(), []);
@@ -362,7 +378,7 @@ export default function PolarTiles({ pole, info, overlay }: { pole: "s" | "n"; i
         if (!t?.geom) return null;
         return (
           <group key={key}>
-            <mesh geometry={t.geom} material={material} raycast={() => null} castShadow receiveShadow />
+            <mesh geometry={t.geom} material={material} raycast={() => null} castShadow={shadows} receiveShadow={shadows} />
             {overlay && <mesh geometry={t.geom} material={overlayMat} raycast={() => null} renderOrder={2} />}
           </group>
         );
