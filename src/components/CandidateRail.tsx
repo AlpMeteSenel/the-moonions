@@ -1,6 +1,7 @@
 "use client";
 
-import { Crosshair, Loader2, Search, Trash2 } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Crosshair, Loader2, Search, Trash2 } from "lucide-react";
+import { useCollapsed, useLayout } from "@/lib/layout";
 import { memo, useMemo, useState } from "react";
 import { fmtLat, fmtLon } from "@/lib/geo";
 import { evalKey, halfSizeOf, regionKey, useStore } from "@/lib/store";
@@ -81,6 +82,8 @@ export default function CandidateRail() {
   const placing = useStore((s) => s.placing);
   const togglePlacing = useStore((s) => s.togglePlacing);
   const [q, setQ] = useState("");
+  const collapsed = useCollapsed("left");
+  const toggle = useLayout((s) => s.toggle);
   const groups = useMemo(() => {
     const m = new Map<string, Site[]>();
     for (const site of sites) {
@@ -90,12 +93,28 @@ export default function CandidateRail() {
     return [...m.entries()].sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]));
   }, [sites, q]);
 
+  if (collapsed)
+    return (
+      <aside className="flex w-9 shrink-0 flex-col items-center border-r border-white/10 bg-slate-950 py-2">
+        <button onClick={() => toggle("left")} className="rounded p-1 text-white/55 hover:bg-white/10 hover:text-white" title="Show the candidate list">
+          <ChevronsRight size={16} />
+        </button>
+        <button onClick={() => toggle("left")} className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40 [writing-mode:vertical-rl] hover:text-white">
+          Candidates · {sites.length}
+        </button>
+      </aside>
+    );
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-white/10 bg-slate-950">
       <div className="space-y-2 border-b border-white/10 p-3">
-        <div className="flex items-center gap-2 rounded-md bg-white/5 px-2 py-1.5">
-          <Search size={14} className="text-white/40" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search candidates" className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30" />
+        <div className="flex items-center gap-1.5">
+          <div className="flex flex-1 items-center gap-2 rounded-md bg-white/5 px-2 py-1.5">
+            <Search size={14} className="text-white/40" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search candidates" className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30" />
+          </div>
+          <button onClick={() => toggle("left")} className="rounded p-1 text-white/45 hover:bg-white/10 hover:text-white" title="Collapse the list">
+            <ChevronsLeft size={16} />
+          </button>
         </div>
         <button
           onClick={togglePlacing}

@@ -1,7 +1,8 @@
 "use client";
 
 import ThermalCard from "./ThermalCard";
-import { CheckCircle2, FilePlus2, Loader2, Mountain, Sparkles } from "lucide-react";
+import { CheckCircle2, ChevronsLeft, ChevronsRight, FilePlus2, Loader2, Mountain, Sparkles } from "lucide-react";
+import { useCollapsed, useLayout } from "@/lib/layout";
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, ComposedChart } from "recharts";
 import { fmtLat, fmtLon } from "@/lib/geo";
@@ -148,8 +149,21 @@ export default function SitePanel() {
   const setView = useStore((s) => s.setView);
   const suggestAround = useStore((s) => s.suggestAround);
   const [tab, setTab] = useState<Tab>("region");
+  const collapsedRight = useCollapsed("right");
+  const toggle = useLayout((s) => s.toggle);
   const [proposed, setProposed] = useState<string | null>(null);
 
+  if (collapsedRight)
+    return (
+      <aside className="flex w-9 shrink-0 flex-col items-center border-l border-white/10 bg-slate-950 py-2">
+        <button onClick={() => toggle("right")} className="rounded p-1 text-white/55 hover:bg-white/10 hover:text-white" title="Show the site panel">
+          <ChevronsLeft size={16} />
+        </button>
+        <button onClick={() => toggle("right")} className="mt-3 max-h-[70vh] truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40 [writing-mode:vertical-rl] hover:text-white">
+          {site ? site.name : "Site panel"}
+        </button>
+      </aside>
+    );
   if (!site) {
     return (
       <aside className="flex w-[400px] shrink-0 flex-col items-center justify-center gap-3 border-l border-white/10 bg-slate-950 p-8 text-center">
@@ -170,7 +184,12 @@ export default function SitePanel() {
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-white/10 bg-slate-950">
       <div className="border-b border-white/10 p-4 pb-3">
-        <div className="text-[10px] uppercase tracking-[0.15em] text-white/40">{site.group}</div>
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-white/40">{site.group}</div>
+          <button onClick={() => toggle("right")} className="-mr-1 -mt-1 rounded p-1 text-white/45 hover:bg-white/10 hover:text-white" title="Collapse the panel">
+            <ChevronsRight size={16} />
+          </button>
+        </div>
         <div className="mt-0.5 text-lg font-semibold leading-tight text-white">{site.name}</div>
         <div className="text-[11px] tabular-nums text-white/45">
           {fmtLat(site.lat)} · {fmtLon(site.lon)} · touchdown {fmtTime(landingTime)}

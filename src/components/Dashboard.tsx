@@ -1,6 +1,7 @@
 "use client";
 
-import { X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { useCollapsed, useLayout } from "@/lib/layout";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
@@ -51,6 +52,8 @@ function StatusLine({ health, error }: { health: Health | null; error: string | 
 
 function SiteHint() {
   const view = useStore((s) => s.view);
+  const folded = useCollapsed("legend");
+  const toggleLayout = useLayout((s) => s.toggle);
   const status = useStore((s) => s.siteStatus);
   const aiMapStatus = useStore((s) => s.aiMapStatus);
   const site = useSelected();
@@ -65,7 +68,11 @@ function SiteHint() {
       </div>
     )}
     <div className="pointer-events-none absolute left-3 top-3 z-20 max-w-xs rounded-lg border border-white/10 bg-slate-950/85 p-3 text-[11px] leading-relaxed text-white/60">
-      <div className="mb-1 font-semibold text-white/85">Site close-up</div>
+      <button onClick={() => toggleLayout("legend")} className="pointer-events-auto -m-1 mb-0 flex w-[calc(100%+0.5rem)] items-center justify-between rounded p-1 font-semibold text-white/85 hover:bg-white/5" title={folded ? "Show the legend" : "Fold the legend"}>
+        Site close-up {folded ? <ChevronDown size={14} className="text-white/50" /> : <ChevronUp size={14} className="text-white/50" />}
+      </button>
+      {!folded && (
+      <>
       {site && <CandidateAssessment region={region} loading={loading} compact />}
       <div className="mt-3">
       Real LOLA terrain, height ×2.{" "}
@@ -92,6 +99,8 @@ function SiteHint() {
       <div className="mt-1.5">
         Dashed outline: candidate region. {region?.available && region.zones.length === 0 ? "No landing zone fits the ellipse." : "Z1, Z2… mark individual zones; their scores apply only there."}
       </div>
+      </>
+      )}
     </div>
     </>
   );
@@ -104,6 +113,7 @@ export default function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => useLayout.getState().hydrate(), []);
   useEffect(() => {
     init()
       .then(() => {
